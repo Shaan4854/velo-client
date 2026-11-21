@@ -107,4 +107,13 @@ class OfflineAccountsTest {
 		assertTrue(OfflineAccounts.matchesMicrosoftName("steve", saved));
 		assertFalse(OfflineAccounts.matchesMicrosoftName("Alex", saved));
 	}
+
+	@Test
+	void createWithExistingBlocksCaseInsensitiveDuplicates() {
+		List<MinecraftSession> saved = List.of(OfflineAccounts.create("Steve", List.of()));
+		IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> OfflineAccounts.create("steve", saved));
+		assertTrue(e.getMessage().contains("already exists"));
+		assertThrows(IllegalArgumentException.class, () -> OfflineAccounts.create(" STEVE ", saved));
+		assertEquals("Alex", OfflineAccounts.create("Alex", saved).username());
+	}
 }

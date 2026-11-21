@@ -48,6 +48,9 @@ dependencies {
 
 test {
 	useJUnitPlatform()
+	// Launcher data paths derive from user.home: keep tests away from any real ~/.velo-client.
+	def testHome = layout.buildDirectory.dir("test-home").get().asFile
+	systemProperty "user.home", testHome.absolutePath
 }
 
 // Unit tests only need the compiled launcher classes, not its resources: main's resources come from

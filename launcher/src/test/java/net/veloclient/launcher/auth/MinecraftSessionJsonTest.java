@@ -100,4 +100,36 @@ class MinecraftSessionJsonTest {
 		MinecraftSession s = new MinecraftSession("t", 0, "r", MS_UUID, "n", null);
 		assertEquals(AccountType.MICROSOFT, s.type());
 	}
+
+	private static MinecraftSession single(String typeJson) {
+		String json = "{\"accounts\":[{\"accessTokenExpiresAtEpochMillis\":9223372036854775807,"
+				+ "\"uuid\":\"5627dd98e6be3c21b8a8e92344183641\",\"username\":\"Steve\",\"type\":" + typeJson + "}],"
+				+ "\"activeUuid\":\"5627dd98e6be3c21b8a8e92344183641\"}";
+		AuthSession.AccountsFile file = AuthSession.parse(JsonParser.parseString(json));
+		assertEquals(1, file.accounts().size());
+		return file.accounts().get(0);
+	}
+
+	@Test
+	void lowercaseAndMixedCaseOfflineTypesLoadAsOffline() {
+		for (String type : new String[] {"\"offline\"", "\"Offline\"", "\"OFFLINE\""}) {
+			MinecraftSession s = single(type);
+			assertEquals(AccountType.OFFLINE, s.type(), type);
+			assertFalse(AccountRefreshPolicy.removeAfterFailedRefresh(s, true), type);
+		}
+		assertEquals(AccountType.MICROSOFT, single("\"microsoft\"").type());
+	}
+
+	@Test
+	void unknownTypeLoadsAsMicrosoftButIsNeverRefreshedOrRemovedWithoutRefreshToken() {
+		for (String type : new String[] {"\"bogus\"", "\"\"", "null", "5"}) {
+			MinecraftSession s = single(type);
+			assertEquals(AccountType.MICROSOFT, s.type(), type);
+			assertNull(s.microsoftRefreshToken());
+			assertFalse(AccountRefreshPolicy.canRefresh(s), type);
+			assertFalse(AccountRefreshPolicy.refreshOnStartup(s), type);
+			assertFalse(AccountRefreshPolicy.refreshBeforeLaunch(s), type);
+			assertFalse(AccountRefreshPolicy.removeAfterFailedRefresh(s, true), type);
+		}
+	}
 }

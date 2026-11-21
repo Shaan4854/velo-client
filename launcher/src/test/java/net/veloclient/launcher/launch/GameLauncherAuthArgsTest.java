@@ -17,7 +17,7 @@ class GameLauncherAuthArgsTest {
 
 	@Test
 	void offlineUsesZeroTokenAndLegacy() {
-		MinecraftSession off = OfflineAccounts.create("Steve");
+		MinecraftSession off = OfflineAccounts.create("Steve", java.util.List.of());
 		assertEquals("0", GameLauncher.launchAccessToken(off));
 		assertEquals("legacy", GameLauncher.launchUserType(off));
 	}
