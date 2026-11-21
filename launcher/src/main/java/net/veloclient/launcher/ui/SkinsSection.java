@@ -33,6 +33,9 @@ import java.util.concurrent.Executors;
  */
 final class SkinsSection {
 
+	/** Shown instead of uploading a skin while an offline account is active. */
+	static final String NEEDS_MICROSOFT = "Skins need a Microsoft account";
+
 	private SkinsSection() {
 	}
 
@@ -155,9 +158,17 @@ final class SkinsSection {
 			equip.getStyleClass().add(isEquipped ? "ghost-button" : "primary-button");
 			equip.setDisable(isEquipped);
 			equip.setMaxWidth(Double.MAX_VALUE);
+			if (host.session() != null && host.session().isOffline() && !isEquipped) {
+				equip.setDisable(true);
+				equip.setTooltip(new javafx.scene.control.Tooltip(NEEDS_MICROSOFT));
+			}
 			equip.setOnAction(e -> {
 				if (host.session() == null) {
 					status.setText("Sign in first.");
+					return;
+				}
+				if (host.session().isOffline()) {
+					status.setText(NEEDS_MICROSOFT);
 					return;
 				}
 				equip.setDisable(true);

@@ -89,7 +89,8 @@ public final class PartyView {
 			content.getChildren().add(inviteCard(invite));
 		}
 		if (LauncherSocial.sessionToken() == null && !LauncherSocial.isDemo()) {
-			content.getChildren().add(hint("Sign in and connect to the Velo server to use parties. " + LauncherSocial.status()));
+			content.getChildren().add(hint(LauncherSocial.offlineAccount() ? "Parties need a Microsoft account - you're using an offline account."
+					: "Sign in and connect to the Velo server to use parties. " + LauncherSocial.status()));
 		} else if (party == null) {
 			content.getChildren().add(emptyState());
 		} else {

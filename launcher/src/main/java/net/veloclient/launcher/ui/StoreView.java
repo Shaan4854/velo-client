@@ -719,7 +719,7 @@ public final class StoreView {
 	private static void fillPacks(Host host, HBox packs, JsonObject catalog) {
 		packs.getChildren().clear();
 		if (catalog == null || !catalog.has("coinPacks")) {
-			Label hint = new Label("Sign in to buy coins.");
+			Label hint = new Label(net.veloclient.launcher.social.LauncherSocial.offlineAccount() ? "Buying coins needs a Microsoft account." : "Sign in to buy coins.");
 			hint.getStyleClass().add("t-muted");
 			packs.getChildren().add(hint);
 			return;
@@ -1359,7 +1359,7 @@ public final class StoreView {
 		}, Executors.newVirtualThreadPerTaskExecutor()).thenAccept(result -> Platform.runLater(() -> {
 			if (result == null) {
 				price.setText("Velo+");
-				per.setText("Sign in to see the price");
+				per.setText(net.veloclient.launcher.social.LauncherSocial.offlineAccount() ? "Needs a Microsoft account" : "Sign in to see the price");
 				return;
 			}
 			double amount = result.get("price").getAsDouble();
@@ -1561,7 +1561,7 @@ public final class StoreView {
 			}
 		}, Executors.newVirtualThreadPerTaskExecutor()).thenAccept(result -> Platform.runLater(() -> {
 			if (result == null) {
-				status.setText("Sign in to link your Discord.");
+				status.setText(net.veloclient.launcher.social.LauncherSocial.offlineAccount() ? "Linking Discord needs a Microsoft account." : "Sign in to link your Discord.");
 				return;
 			}
 			if (result.has("inviteUrl") && !result.get("inviteUrl").isJsonNull() && !result.get("inviteUrl").getAsString().isBlank()) {

@@ -45,6 +45,15 @@ public final class SkinFetcher {
 		}
 		Path cacheFile = VeloPaths.root().resolve("cache").resolve("skins").resolve(session.uuid() + ".png");
 		Path variantFile = VeloPaths.root().resolve("cache").resolve("skins").resolve(session.uuid() + ".variant");
+		if (session.isOffline()) {
+			// No Mojang profile and no token: never call the profile API. Show the default Steve/Alex skin.
+			SkinData fallback = DefaultSkins.forUuid(session.uuid());
+			if (fallback != null) {
+				net.veloclient.launcher.social.SkinHeads.update(session.uuid(), fallback.pngBytes());
+				return fallback;
+			}
+			return readCached(cacheFile, variantFile);
+		}
 		try {
 			Fetched fetched = fetchSkinInfo(session.minecraftAccessToken());
 			if (fetched == null) {

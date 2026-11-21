@@ -481,7 +481,7 @@ public final class CosmeticsView {
 			if (extras != null && extras.get("pet") != null) {
 				net.veloclient.launcher.data.PetsSetting.equip(extras.get("pet").isEmpty() ? null : extras.get("pet"));
 			}
-			if (skin != null && !skin.equals(SkinLibrary.equippedId()) && host.session() != null) {
+			if (skin != null && !skin.equals(SkinLibrary.equippedId()) && host.session() != null && !host.session().isOffline()) {
 				SkinLibrary.Skin chosen = SkinLibrary.all().stream().filter(s -> s.id().equals(skin)).findFirst().orElse(null);
 				if (chosen != null) {
 					// Uploading to Mojang takes a moment (and can be refused for changing too often).
@@ -1938,6 +1938,10 @@ public final class CosmeticsView {
 				}
 				if (host.session() == null) {
 					status.setText("Sign in first.");
+					return;
+				}
+				if (host.session().isOffline()) {
+					status.setText(SkinsSection.NEEDS_MICROSOFT);
 					return;
 				}
 				status.setText("Uploading " + chosen.name() + " to your Minecraft account...");

@@ -354,6 +354,9 @@ public final class LauncherApp extends Application {
 		}));
 
 		net.veloclient.launcher.social.LauncherSocial.setTokenRefresher(expired -> {
+			if (expired == null || expired.isOffline()) {
+				return null; // offline accounts have no Microsoft token to refresh
+			}
 			try {
 				MinecraftSession fresh = new MicrosoftAuth(MICROSOFT_CLIENT_ID).signInWithRefreshToken(expired.microsoftRefreshToken());
 				AuthSession.save(fresh);
@@ -1261,10 +1264,10 @@ public final class LauncherApp extends Application {
 			return;
 		}
 		if (session == null) {
-			SignInDialog.show(stage, MICROSOFT_CLIENT_ID, newSession -> {
+			beginAddAccount(newSession -> {
 				onSignedIn(newSession);
 				refreshLaunchBar();
-			}, error -> showPlaceholderAlert("Sign-in failed", error));
+			});
 			return;
 		}
 		launchWithProgress(target.instance(), target.serverAddress(), trigger, progress, status);
@@ -1474,10 +1477,15 @@ public final class LauncherApp extends Application {
 				popup[0].hide();
 				beginSignIn();
 			}));
+			list.getChildren().add(notificationRow("user", "#A9A9B3", "Play offline", "Just a username - singleplayer & LAN", () -> {
+				popup[0].hide();
+				beginOfflineSignIn();
+			}));
 		} else {
 			Label name = new Label(session.username());
 			name.getStyleClass().add("t-heading");
-			Label tier = new Label(net.veloclient.launcher.social.StoreApi.isPlusCached() ? "Velo+ member" : "Velo Client player");
+			Label tier = new Label(session.isOffline() ? "Offline account"
+					: net.veloclient.launcher.social.StoreApi.isPlusCached() ? "Velo+ member" : "Velo Client player");
 			tier.getStyleClass().add("t-muted");
 			HBox headerRow = new HBox(12, net.veloclient.launcher.ui.Heads.head(session.uuid(), session.username(), 40), new VBox(2, name, tier));
 			headerRow.setAlignment(Pos.CENTER_LEFT);
@@ -1487,14 +1495,17 @@ public final class LauncherApp extends Application {
 				popup[0].hide();
 				showAccountProfile();
 			}));
-			list.getChildren().add(menuRow("gift", "Invite friends · earn coins", () -> {
-				popup[0].hide();
-				showReferrals();
-			}));
-			list.getChildren().add(menuRow("skin", "Skins", () -> {
-				popup[0].hide();
-				showSkins();
-			}));
+			if (!session.isOffline()) {
+				// Both need a Microsoft account (Velo Network / Mojang skin upload).
+				list.getChildren().add(menuRow("gift", "Invite friends · earn coins", () -> {
+					popup[0].hide();
+					showReferrals();
+				}));
+				list.getChildren().add(menuRow("skin", "Skins", () -> {
+					popup[0].hide();
+					showSkins();
+				}));
+			}
 		}
 		list.getChildren().add(menuRow("palette", "Themes", () -> {
 			popup[0].hide();
@@ -1512,6 +1523,12 @@ public final class LauncherApp extends Application {
 				HBox.setHgrow(accountName, Priority.ALWAYS);
 				accountName.setMaxWidth(Double.MAX_VALUE);
 				HBox row = new HBox(10, net.veloclient.launcher.ui.Heads.head(account.uuid(), account.username(), 24), accountName);
+				if (account.isOffline()) {
+					Label offlineTag = new Label("Offline");
+					offlineTag.getStyleClass().add("t-muted");
+					offlineTag.setStyle("-fx-font-size: 11px;");
+					row.getChildren().add(offlineTag);
+				}
 				if (active) {
 					row.getChildren().add(net.veloclient.launcher.ui.Icons.icon("check", 15, Color.web("#3DDC97"), 2.4));
 				}
@@ -1526,9 +1543,13 @@ public final class LauncherApp extends Application {
 				list.getChildren().add(row);
 			}
 		}
-		list.getChildren().add(menuRow("plus", "Add account", () -> {
+		list.getChildren().add(menuRow("plus", "Add Microsoft account", () -> {
 			popup[0].hide();
 			beginSignIn();
+		}));
+		list.getChildren().add(menuRow("plus", "Add offline account", () -> {
+			popup[0].hide();
+			beginOfflineSignIn();
 		}));
 		if (session != null) {
 			HBox signOutRow = menuRow("logout", "Sign out", () -> {
@@ -3051,8 +3072,7 @@ public final class LauncherApp extends Application {
 				return;
 			}
 			if (session == null) {
-				SignInDialog.show(stage, MICROSOFT_CLIENT_ID, newSession -> { onSignedIn(newSession); showServers(); },
-						error -> showPlaceholderAlert("Sign-in failed", error));
+				beginAddAccount(newSession -> { onSignedIn(newSession); showServers(); });
 				return;
 			}
 			launchWithProgress(instance, server.address(), connect, progressBar, launchStatus);
@@ -3292,7 +3312,7 @@ public final class LauncherApp extends Application {
 		Executors.newVirtualThreadPerTaskExecutor().submit(() -> {
 			boolean online = Connectivity.checkNow();
 			Platform.runLater(() -> {
-				if (online && session != null && session.isAccessTokenExpired()) {
+				if (online && session != null && !session.isOffline() && session.isAccessTokenExpired()) {
 					requireSignedIn(s -> { });
 				}
 				if (!Connectivity.offline() && currentPage != null) {
@@ -3309,6 +3329,12 @@ public final class LauncherApp extends Application {
 		}
 		// Pages built before the refresh finishes already read this account's Locker files.
 		net.veloclient.launcher.data.VeloPaths.setAccount(cached.get().uuid());
+		if (cached.get().isOffline()) {
+			// Offline accounts never refresh and must never reach the "dead account" removal below.
+			MinecraftSession offline = cached.get();
+			Platform.runLater(() -> onSignedIn(offline));
+			return;
+		}
 		Executors.newVirtualThreadPerTaskExecutor().submit(() -> {
 			try {
 				MinecraftSession restored = cached.get();
@@ -3353,11 +3379,25 @@ public final class LauncherApp extends Application {
 				error -> showPlaceholderAlert("Sign-in failed", error));
 	}
 
+	/** "Add offline account": a username dialog, no network. */
+	private void beginOfflineSignIn() {
+		net.veloclient.launcher.ui.OfflineAccountDialog.show(stage, AuthSession.loadAllAccounts(), this::onSignedIn);
+	}
+
+	/** No account yet and one is needed: "Sign in with Microsoft" or "Play offline", then {@code then}. */
+	private void beginAddAccount(Consumer<MinecraftSession> then) {
+		net.veloclient.launcher.ui.AddAccountChooser.show(stage,
+				() -> SignInDialog.show(stage, MICROSOFT_CLIENT_ID, then, error -> showPlaceholderAlert("Sign-in failed", error)),
+				() -> net.veloclient.launcher.ui.OfflineAccountDialog.show(stage, AuthSession.loadAllAccounts(), then));
+	}
+
 	private void onSignedIn(MinecraftSession newSession) {
 		this.session = newSession;
 		AuthSession.save(newSession);
 		net.veloclient.launcher.social.LauncherSocial.setSession(newSession);
-		redeemPendingReferralSoon();
+		if (!newSession.isOffline()) {
+			redeemPendingReferralSoon(); // needs Velo Network, which offline accounts can't use
+		}
 		// The sidebar's account badge is built once in buildSidebar() and
 		// never touched by showHome() (which only rebuilds the title-screen
 		// content) - always refreshing it here (not just in the "else"
@@ -4857,6 +4897,11 @@ public final class LauncherApp extends Application {
 
 	/** Runs {@code action} with a signed-in, non-expired session - signing in (or refreshing) first if needed. */
 	private void requireSignedIn(Consumer<MinecraftSession> action) {
+		if (session != null && session.isOffline()) {
+			// Nothing to refresh, and never the Microsoft refresh/removal path below.
+			action.accept(session);
+			return;
+		}
 		// hours of validity, not seconds: the game uses this token for every server join of the session
 		if (session != null && !session.tooShortForGame()) {
 			action.accept(session);
@@ -4905,10 +4950,10 @@ public final class LauncherApp extends Application {
 			});
 			return;
 		}
-		SignInDialog.show(stage, MICROSOFT_CLIENT_ID, newSession -> {
+		beginAddAccount(newSession -> {
 			onSignedIn(newSession);
 			action.accept(newSession);
-		}, error -> showPlaceholderAlert("Sign-in failed", error));
+		});
 	}
 
 	// ---- Settings ----
@@ -5647,7 +5692,18 @@ public final class LauncherApp extends Application {
 		content.getChildren().add(2, soundAndGuidesCard());
 
 		VBox account = net.veloclient.launcher.ui.SettingsUi.card("Account");
-		if (session != null) {
+		if (session != null && session.isOffline()) {
+			// Offline: no website code (it needs Velo Network); offer adding a Microsoft account instead.
+			Button signOutButton = new Button("Sign out");
+			signOutButton.getStyleClass().add("danger-ghost-button");
+			signOutButton.setOnAction(e -> signOut());
+			net.veloclient.launcher.ui.SettingsUi.row(account, "Offline account · " + session.username(),
+					"Singleplayer, LAN and offline-mode servers", "UUID " + session.uuid(), signOutButton);
+			Button addMicrosoft = new Button("Add Microsoft account");
+			addMicrosoft.getStyleClass().add("primary-button");
+			addMicrosoft.setOnAction(e -> beginSignIn());
+			net.veloclient.launcher.ui.SettingsUi.row(account, "Microsoft account", "Needed for online servers, Friends, Store and skins", null, addMicrosoft);
+		} else if (session != null) {
 			Button signOutButton = new Button("Sign out");
 			signOutButton.getStyleClass().add("danger-ghost-button");
 			signOutButton.setOnAction(e -> signOut());
@@ -5694,7 +5750,10 @@ public final class LauncherApp extends Application {
 			Button signInButton = new Button("Sign in");
 			signInButton.getStyleClass().add("primary-button");
 			signInButton.setOnAction(e -> beginSignIn());
-			net.veloclient.launcher.ui.SettingsUi.row(account, "Not signed in", "Sign in to play online", null, signInButton);
+			Button offlineButton = new Button("Add offline account");
+			offlineButton.getStyleClass().add("ghost-button");
+			offlineButton.setOnAction(e -> beginOfflineSignIn());
+			net.veloclient.launcher.ui.SettingsUi.row(account, "Not signed in", "Sign in to play online, or play offline with a username", null, signInButton, offlineButton);
 		}
 		content.getChildren().add(account);
 

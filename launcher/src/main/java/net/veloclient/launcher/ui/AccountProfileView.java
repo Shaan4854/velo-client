@@ -313,33 +313,41 @@ public final class AccountProfileView {
 	private static VBox connections(Host host, MinecraftSession session) {
 		Label title = new Label("Connections");
 		title.getStyleClass().add("t-heading");
-		String expiry = DateTimeFormatter.ofPattern("MMM d, HH:mm", Locale.ENGLISH).withZone(ZoneId.systemDefault())
-				.format(Instant.ofEpochMilli(session.accessTokenExpiresAtEpochMillis()));
-		Node microsoft = connection("MS", "#2F6FD6", "Microsoft", session.isAccessTokenExpired() ? "Refreshes on next launch" : "Session valid until " + expiry, true);
-		Label discordStatus = new Label("Checking...");
-		discordStatus.getStyleClass().add("t-muted");
-		HBox discord = (HBox) connection("D", "#5865F2", "Discord", "", false);
-		((VBox) discord.getChildren().get(1)).getChildren().set(1, discordStatus);
-		CompletableFuture.supplyAsync(() -> {
-			try {
-				return net.veloclient.launcher.social.StoreApi.discordStatus();
-			} catch (net.veloclient.launcher.social.StoreApi.StoreError e) {
-				return null;
-			}
-		}, Executors.newVirtualThreadPerTaskExecutor()).thenAccept(result -> Platform.runLater(() -> {
-			if (result != null && result.has("linked") && result.get("linked").getAsBoolean()) {
-				discordStatus.setText("Linked as " + result.get("discordName").getAsString());
-				discordStatus.setStyle("-fx-text-fill: -velo-green;");
-			} else {
-				discordStatus.setText(result == null ? "Not available" : "Not linked - link it in the Store");
-			}
-		}));
-		// Team members: their staff panel sign-in, and signing out of it (so it can be set up on another device).
+		Node microsoft;
+		HBox discord;
 		VBox staffBox = new VBox(8);
 		staffBox.setManaged(false);
 		staffBox.setVisible(false);
-		CompletableFuture.supplyAsync(net.veloclient.launcher.social.LauncherSocial::staffPanelStatus, Executors.newVirtualThreadPerTaskExecutor())
-				.thenAccept(status -> Platform.runLater(() -> fillStaffPanel(staffBox, status, host)));
+		if (session.isOffline()) {
+			// No Microsoft session to show and no Velo Network to ask (Discord/staff status need it).
+			microsoft = connection("OFF", "#6B6B76", "Offline account", "No Microsoft sign-in", true);
+			discord = (HBox) connection("D", "#5865F2", "Discord", "Needs a Microsoft account", false);
+		} else {
+			String expiry = DateTimeFormatter.ofPattern("MMM d, HH:mm", Locale.ENGLISH).withZone(ZoneId.systemDefault())
+					.format(Instant.ofEpochMilli(session.accessTokenExpiresAtEpochMillis()));
+			microsoft = connection("MS", "#2F6FD6", "Microsoft", session.isAccessTokenExpired() ? "Refreshes on next launch" : "Session valid until " + expiry, true);
+			Label discordStatus = new Label("Checking...");
+			discordStatus.getStyleClass().add("t-muted");
+			discord = (HBox) connection("D", "#5865F2", "Discord", "", false);
+			((VBox) discord.getChildren().get(1)).getChildren().set(1, discordStatus);
+			CompletableFuture.supplyAsync(() -> {
+				try {
+					return net.veloclient.launcher.social.StoreApi.discordStatus();
+				} catch (net.veloclient.launcher.social.StoreApi.StoreError e) {
+					return null;
+				}
+			}, Executors.newVirtualThreadPerTaskExecutor()).thenAccept(result -> Platform.runLater(() -> {
+				if (result != null && result.has("linked") && result.get("linked").getAsBoolean()) {
+					discordStatus.setText("Linked as " + result.get("discordName").getAsString());
+					discordStatus.setStyle("-fx-text-fill: -velo-green;");
+				} else {
+					discordStatus.setText(result == null ? "Not available" : "Not linked - link it in the Store");
+				}
+			}));
+			// Team members: their staff panel sign-in, and signing out of it (so it can be set up on another device).
+			CompletableFuture.supplyAsync(net.veloclient.launcher.social.LauncherSocial::staffPanelStatus, Executors.newVirtualThreadPerTaskExecutor())
+					.thenAccept(status -> Platform.runLater(() -> fillStaffPanel(staffBox, status, host)));
+		}
 		Region grow = new Region();
 		VBox.setVgrow(grow, Priority.ALWAYS);
 		Button signOut = new Button("Sign out");

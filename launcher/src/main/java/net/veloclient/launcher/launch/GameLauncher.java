@@ -158,6 +158,16 @@ public final class GameLauncher {
 		}
 	}
 
+	/** {@code ${auth_access_token}} / {@code ${auth_session}}: the real token for Microsoft, "0" for offline accounts. */
+	static String launchAccessToken(MinecraftSession session) {
+		return session.isOffline() ? net.veloclient.launcher.auth.OfflineAccounts.OFFLINE_ACCESS_TOKEN : session.minecraftAccessToken();
+	}
+
+	/** {@code ${user_type}}: "msa" for Microsoft, "legacy" for offline accounts. */
+	static String launchUserType(MinecraftSession session) {
+		return session.isOffline() ? net.veloclient.launcher.auth.OfflineAccounts.OFFLINE_USER_TYPE : "msa";
+	}
+
 	private static LaunchResult startProcess(Instance instance, GameVersion version, JsonObject vanilla, JsonObject fabric,
 			List<LibraryResolver.ResolvedLibrary> libraries, Path clientJar, Path nativesDir, MinecraftSession session,
 			String quickPlayServerAddress, String runId, JavaRuntimeProvider.JavaRuntime runtime) throws IOException {
@@ -172,10 +182,10 @@ public final class GameLauncher {
 		values.put("assets_root", GameDataPaths.assetsRoot().toAbsolutePath().toString());
 		values.put("assets_index_name", vanilla.getAsJsonObject("assetIndex").get("id").getAsString());
 		values.put("auth_uuid", session.uuid());
-		values.put("auth_access_token", session.minecraftAccessToken());
+		values.put("auth_access_token", launchAccessToken(session));
 		values.put("auth_xuid", "");
 		values.put("clientid", "");
-		values.put("user_type", "msa");
+		values.put("user_type", launchUserType(session));
 		values.put("version_type", vanilla.has("type") ? vanilla.get("type").getAsString() : "release");
 		values.put("natives_directory", nativesDir.toAbsolutePath().toString());
 		values.put("launcher_name", LAUNCHER_NAME);
@@ -183,7 +193,10 @@ public final class GameLauncher {
 		values.put("classpath", classpath);
 		// Pre-1.13 version JSONs: one "minecraftArguments" string with these extra placeholders.
 		values.put("user_properties", "{}");
-		values.put("auth_session", session.minecraftAccessToken());
+		values.put("auth_session", launchAccessToken(session));
+		if (session.isOffline()) {
+			net.veloclient.launcher.LauncherLog.info("Launching offline account " + session.username());
+		}
 		values.put("game_assets", GameDataPaths.assetsRoot().toAbsolutePath().toString());
 		Set<String> activeFeatures = Set.of();
 		if (quickPlayServerAddress != null && !quickPlayServerAddress.isBlank()) {
