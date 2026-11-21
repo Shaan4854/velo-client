@@ -501,6 +501,14 @@ public final class SessionAutoFixerModule extends AbstractModule {
 
 	private void refreshAndReconnect() {
 		MinecraftClient client = MinecraftClient.getInstance();
+		if (net.veloclient.velo.client.network.VeloServerClient.isOfflineGameSession()) {
+			// An offline game must never be switched to the launcher's saved Microsoft account.
+			client.execute(() -> {
+				fixing = false;
+				setButtonMessage("Offline account - Session Auto-Fixer needs a Microsoft account");
+			});
+			return;
+		}
 		try {
 			VeloAccountAuth.RefreshedSession refreshed = VeloAccountAuth.refreshActiveAccount();
 			client.execute(() -> {

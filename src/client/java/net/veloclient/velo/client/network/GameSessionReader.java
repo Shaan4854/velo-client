@@ -15,6 +15,32 @@ final class GameSessionReader {
 	private GameSessionReader() {
 	}
 
+	/**
+	 * True when this is a real (non-development) game started with an offline account - a placeholder access token
+	 * such as the Velo launcher's offline "0". Such a game must never sign in to Velo Network (or swap its session) as
+	 * the launcher's saved Microsoft account: the player in-game is someone else. Development runs (runClient) keep
+	 * using the launcher's account as before.
+	 */
+	static boolean isOfflineSession() {
+		try {
+			if (net.fabricmc.loader.api.FabricLoader.getInstance().isDevelopmentEnvironment()) {
+				return false;
+			}
+			//? if <26.1 {
+			net.minecraft.client.session.Session session = net.minecraft.client.MinecraftClient.getInstance().getSession();
+			//?} else {
+			/*net.minecraft.client.User session = net.minecraft.client.Minecraft.getInstance().getUser();
+			*///?}
+			if (session == null) {
+				return false;
+			}
+			String accessToken = session.getAccessToken();
+			return accessToken == null || accessToken.length() < 32;
+		} catch (RuntimeException e) {
+			return false;
+		}
+	}
+
 	/** Empty for offline/dev sessions, whose placeholder tokens Mojang would reject anyway. */
 	static Optional<ActiveAccountReader.Account> read() {
 		try {

@@ -52,6 +52,10 @@ final class ActiveAccountReader {
 				if (!account.has("uuid") || !activeUuid.equals(account.get("uuid").getAsString())) {
 					continue;
 				}
+				// Launcher offline accounts have no token to sign in to Velo Network with.
+				if (account.has("type") && !account.get("type").isJsonNull() && "OFFLINE".equals(account.get("type").getAsString())) {
+					return Optional.empty();
+				}
 				String username = account.has("username") ? account.get("username").getAsString() : null;
 				String accessToken = account.has("minecraftAccessToken") && !account.get("minecraftAccessToken").isJsonNull()
 						? account.get("minecraftAccessToken").getAsString() : null;
