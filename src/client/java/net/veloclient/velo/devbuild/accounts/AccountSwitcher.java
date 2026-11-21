@@ -151,6 +151,10 @@ public final class AccountSwitcher {
 				}
 				for (var e : list) {
 					JsonObject o = e.getAsJsonObject();
+					// Launcher offline accounts can't be switched to in-game (no Microsoft token to renew or play with).
+					if (o.has("type") && !o.get("type").isJsonNull() && "OFFLINE".equalsIgnoreCase(o.get("type").getAsString())) {
+						continue;
+					}
 					if (o.has("uuid") && o.has("username")) {
 						out.add(new Account(dashed(o.get("uuid").getAsString()), o.get("username").getAsString(), o));
 					}

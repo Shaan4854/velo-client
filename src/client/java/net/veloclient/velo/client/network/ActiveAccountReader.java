@@ -53,7 +53,7 @@ final class ActiveAccountReader {
 					continue;
 				}
 				// Launcher offline accounts have no token to sign in to Velo Network with.
-				if (account.has("type") && !account.get("type").isJsonNull() && "OFFLINE".equals(account.get("type").getAsString())) {
+				if (account.has("type") && !account.get("type").isJsonNull() && "OFFLINE".equalsIgnoreCase(account.get("type").getAsString())) {
 					return Optional.empty();
 				}
 				String username = account.has("username") ? account.get("username").getAsString() : null;
