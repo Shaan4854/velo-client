@@ -354,8 +354,8 @@ public final class LauncherApp extends Application {
 		}));
 
 		net.veloclient.launcher.social.LauncherSocial.setTokenRefresher(expired -> {
-			if (expired == null || expired.isOffline()) {
-				return null; // offline accounts have no Microsoft token to refresh
+			if (!net.veloclient.launcher.auth.AccountRefreshPolicy.canRefresh(expired)) {
+				return null; // offline accounts (or entries without a refresh token) have nothing to refresh
 			}
 			try {
 				MinecraftSession fresh = new MicrosoftAuth(MICROSOFT_CLIENT_ID).signInWithRefreshToken(expired.microsoftRefreshToken());
@@ -3312,7 +3312,7 @@ public final class LauncherApp extends Application {
 		Executors.newVirtualThreadPerTaskExecutor().submit(() -> {
 			boolean online = Connectivity.checkNow();
 			Platform.runLater(() -> {
-				if (online && session != null && !session.isOffline() && session.isAccessTokenExpired()) {
+				if (online && net.veloclient.launcher.auth.AccountRefreshPolicy.refreshOnStartup(session)) {
 					requireSignedIn(s -> { });
 				}
 				if (!Connectivity.offline() && currentPage != null) {
@@ -3329,10 +3329,11 @@ public final class LauncherApp extends Application {
 		}
 		// Pages built before the refresh finishes already read this account's Locker files.
 		net.veloclient.launcher.data.VeloPaths.setAccount(cached.get().uuid());
-		if (cached.get().isOffline()) {
-			// Offline accounts never refresh and must never reach the "dead account" removal below.
-			MinecraftSession offline = cached.get();
-			Platform.runLater(() -> onSignedIn(offline));
+		if (!net.veloclient.launcher.auth.AccountRefreshPolicy.refreshOnStartup(cached.get())) {
+			// Nothing to refresh (offline account, valid token, or no refresh token): never reaches the
+			// "dead account" removal below.
+			MinecraftSession ready = cached.get();
+			Platform.runLater(() -> onSignedIn(ready));
 			return;
 		}
 		Executors.newVirtualThreadPerTaskExecutor().submit(() -> {
@@ -3347,7 +3348,7 @@ public final class LauncherApp extends Application {
 				Platform.runLater(() -> onSignedIn(finalSession));
 			} catch (Exception e) {
 				LauncherLog.warn("Silent sign-in failed", e);
-				if (!Connectivity.accountDead(e)) {
+				if (!net.veloclient.launcher.auth.AccountRefreshPolicy.removeAfterFailedRefresh(cached.get(), Connectivity.accountDead(e))) {
 					// Offline, rate-limited or a Microsoft/Xbox/Mojang hiccup: stay signed in with the saved account
 					// (it refreshes on Play / once we're online). Only a refused refresh token signs the account out.
 					if (Connectivity.keepAccount(e)) {
@@ -4897,21 +4898,20 @@ public final class LauncherApp extends Application {
 
 	/** Runs {@code action} with a signed-in, non-expired session - signing in (or refreshing) first if needed. */
 	private void requireSignedIn(Consumer<MinecraftSession> action) {
-		if (session != null && session.isOffline()) {
-			// Nothing to refresh, and never the Microsoft refresh/removal path below.
-			action.accept(session);
+		// The account this call is about - never re-read the mutable field in the background task or later callbacks,
+		// so a switch meanwhile (e.g. to an offline account) can't be refreshed or removed by mistake.
+		final MinecraftSession target = session;
+		// Offline accounts and entries without a refresh token are used as they are: nothing to refresh, never removed.
+		// Microsoft accounts need hours of validity, not seconds: the game uses this token for every server join.
+		if (target != null && !net.veloclient.launcher.auth.AccountRefreshPolicy.refreshBeforeLaunch(target)) {
+			action.accept(target);
 			return;
 		}
-		// hours of validity, not seconds: the game uses this token for every server join of the session
-		if (session != null && !session.tooShortForGame()) {
-			action.accept(session);
-			return;
-		}
-		if (session != null) {
+		if (target != null) {
 			Executors.newVirtualThreadPerTaskExecutor().submit(() -> {
 				try {
 					var auth = new MicrosoftAuth(MICROSOFT_CLIENT_ID);
-					MinecraftSession refreshed = auth.signInWithRefreshToken(session.microsoftRefreshToken());
+					MinecraftSession refreshed = auth.signInWithRefreshToken(target.microsoftRefreshToken());
 					Connectivity.reportSuccess();
 					Platform.runLater(() -> {
 						onSignedIn(refreshed);
@@ -4919,14 +4919,14 @@ public final class LauncherApp extends Application {
 					});
 				} catch (Exception e) {
 					LauncherLog.warn("Sign-in refresh before launch failed", e);
-					if (!Connectivity.accountDead(e)) {
+					if (!net.veloclient.launcher.auth.AccountRefreshPolicy.removeAfterFailedRefresh(target, Connectivity.accountDead(e))) {
 						// No internet: the sign-in wasn't rejected, it just couldn't be checked. Keep the account and start
 						// anyway - singleplayer and LAN work, servers need the connection back.
 						Connectivity.reportFailure(e);
 						Platform.runLater(() -> {
 							net.veloclient.launcher.ui.Toasts.show(content, "info", "#f7c04a", Connectivity.offline() ? "Offline - starting with your saved account (singleplayer & LAN)"
 									: "Microsoft sign-in is down right now - starting with your saved account");
-							action.accept(session);
+							action.accept(target);
 						});
 						return;
 					}
@@ -4934,16 +4934,26 @@ public final class LauncherApp extends Application {
 					// that one and fall back to another saved account if one
 					// exists, same as a manual sign-out.
 					Platform.runLater(() -> {
-						Optional<MinecraftSession> next = AuthSession.remove(session.uuid());
+						Optional<MinecraftSession> next = AuthSession.remove(target.uuid());
+						boolean stillActive = session != null && session.uuid().equals(target.uuid());
+						if (!stillActive) {
+							// The user switched accounts meanwhile: leave their choice alone, don't launch.
+							return;
+						}
 						session = next.orElse(null);
 						net.veloclient.launcher.social.LauncherSocial.setSession(session);
-						if (session != null) {
+						if (session == null) {
+							beginSignIn();
+						} else if (session.isOffline()) {
+							// Never start the game as a different (offline) identity than the one Play was pressed for.
+							refreshForAccountChange();
+							net.veloclient.launcher.ui.Toasts.show(content, "info", "#f7c04a", "Microsoft sign-in for " + target.username()
+									+ " expired - switched to offline account " + session.username() + ". Sign in again or press Play to play offline.");
+						} else {
 							// Re-enter rather than using it directly - the
 							// fallback account's own cached token may also
 							// be expired and need its own refresh first.
 							requireSignedIn(action);
-						} else {
-							beginSignIn();
 						}
 					});
 				}

@@ -6,10 +6,12 @@ package net.veloclient.launcher.auth;
  */
 public enum AccountType {
 	/** Signed in through Microsoft / Xbox Live; has real Minecraft and refresh tokens. */
+	@com.google.gson.annotations.SerializedName(value = "MICROSOFT", alternate = {"microsoft", "Microsoft", "msa", "MSA"})
 	MICROSOFT,
 	/**
 	 * A local offline profile (vanilla offline-mode style): a typed username and a name-derived v3 UUID, no tokens.
 	 * Works in singleplayer, LAN and {@code online-mode=false} servers only.
 	 */
+	@com.google.gson.annotations.SerializedName(value = "OFFLINE", alternate = {"offline", "Offline", "legacy", "LEGACY"})
 	OFFLINE
 }

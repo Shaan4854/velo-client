@@ -54,8 +54,12 @@ public final class SkinFetcher {
 			}
 			return readCached(cacheFile, variantFile);
 		}
+		if (session.minecraftAccessToken() == null || session.minecraftAccessToken().isBlank()) {
+			// No token (e.g. an entry with an unknown type): never send "Bearer null".
+			return readCached(cacheFile, variantFile);
+		}
 		try {
-			Fetched fetched = fetchSkinInfo(session.minecraftAccessToken());
+			Fetched fetched = profileApi.fetch(session.minecraftAccessToken());
 			if (fetched == null) {
 				net.veloclient.launcher.social.SkinHeads.refresh(session.uuid());
 				return readCached(cacheFile, variantFile);
@@ -83,8 +87,15 @@ public final class SkinFetcher {
 		}
 	}
 
-	private record Fetched(String url, boolean slim) {
+	record Fetched(String url, boolean slim) {
 	}
+
+	/** The authenticated Mojang profile call - replaceable in tests to prove which accounts never reach it. */
+	interface ProfileApi {
+		Fetched fetch(String accessToken) throws Exception;
+	}
+
+	static volatile ProfileApi profileApi = SkinFetcher::fetchSkinInfo;
 
 	private static Fetched fetchSkinInfo(String accessToken) throws IOException, InterruptedException {
 		HttpRequest request = HttpRequest.newBuilder(URI.create(PROFILE_URL))
