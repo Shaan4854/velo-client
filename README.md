@@ -209,6 +209,10 @@ the launcher's Microsoft account.
 Offline accounts are saved in the same `config/account.json` with `"type": "OFFLINE"`; existing files load unchanged
 (entries without a type are Microsoft accounts). Microsoft sign-in works exactly as before.
 
+**Don't downgrade the launcher while offline accounts are saved.** Older launchers don't know the `type` field: they
+treat an offline account as a Microsoft account with no sign-in tokens, so launching with it fails and Velo Network
+keeps reporting an expired sign-in. Remove offline accounts first if you need to go back to an older version.
+
 ## Building
 
 Requires network access on first build (Gradle downloads Minecraft,
