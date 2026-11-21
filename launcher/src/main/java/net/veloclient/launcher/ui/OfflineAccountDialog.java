@@ -92,7 +92,7 @@ public final class OfflineAccountDialog {
 			}
 		});
 
-		dialog.setResultConverter(button -> button == create ? OfflineAccounts.create(name.getText()) : null);
+		dialog.setResultConverter(button -> button == create ? OfflineAccounts.create(name.getText(), existing) : null);
 		DialogStyling.apply(dialog);
 		dialog.setOnShown(e -> Platform.runLater(name::requestFocus));
 		dialog.showAndWait().ifPresent(onCreated);

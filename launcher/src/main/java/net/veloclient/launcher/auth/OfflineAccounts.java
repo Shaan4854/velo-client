@@ -86,10 +86,23 @@ public final class OfflineAccounts {
 
 	/**
 	 * Builds an offline account: null tokens, an expiry that never passes, the offline UUID and the name as typed
-	 * (trimmed). Throws {@link IllegalArgumentException} for an invalid name, so the rule is enforced here and not only
-	 * in the UI.
+	 * (trimmed). Throws {@link IllegalArgumentException} for an invalid name or a case-insensitive duplicate of a saved
+	 * offline account ({@link #validateNew}), so both rules are enforced here and not only in the UI.
 	 */
-	public static MinecraftSession create(String name) {
+	public static MinecraftSession create(String name, Collection<MinecraftSession> existing) {
+		Optional<String> error = validateNew(name, existing);
+		if (error.isPresent()) {
+			throw new IllegalArgumentException(error.get());
+		}
+		return build(name);
+	}
+
+	/** {@link #create(String, Collection)} with no saved accounts to check against - for tests only. */
+	static MinecraftSession create(String name) {
+		return create(name, java.util.List.of());
+	}
+
+	private static MinecraftSession build(String name) {
 		Optional<String> error = validate(name);
 		if (error.isPresent()) {
 			throw new IllegalArgumentException(error.get());
