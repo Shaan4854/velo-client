@@ -1973,7 +1973,9 @@ public final class CosmeticsView {
 	private static final java.util.Set<String> SKIN_COPY_CHECKED = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
 	private static void autoCopyAccountSkin(MinecraftSession session, Runnable refresh) {
-		if (session == null || !SKIN_COPY_CHECKED.add(session.uuid())) {
+		// Offline accounts: their "skin" is the default Steve/Alex - never add it to the shared library, mark it worn or
+		// let it flow into the (Microsoft account's) loadouts.
+		if (session == null || session.isOffline() || !SKIN_COPY_CHECKED.add(session.uuid())) {
 			return;
 		}
 		Thread.ofVirtual().name("velo-skin-autocopy").start(() -> {

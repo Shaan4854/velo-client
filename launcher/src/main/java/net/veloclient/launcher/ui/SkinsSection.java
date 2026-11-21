@@ -242,7 +242,10 @@ final class SkinsSection {
 		Button save = new Button("Save copy");
 		save.getStyleClass().add("ghost-button");
 		save.setMaxWidth(Double.MAX_VALUE);
-		save.setDisable(host.session() == null);
+		save.setDisable(host.session() == null || host.session().isOffline());
+		if (host.session() != null && host.session().isOffline()) {
+			save.setTooltip(new javafx.scene.control.Tooltip(NEEDS_MICROSOFT));
+		}
 		save.setOnAction(e -> {
 			e.consume();
 			save.setDisable(true);
