@@ -188,6 +188,27 @@ Privacy Policy required for a project with an identifiable operator.
 - **Stress-test/benchmark scripting** and the **network latency simulator**
   from the design brief aren't implemented yet.
 
+## Offline accounts
+
+Besides Microsoft accounts, the launcher can add **offline accounts** (account menu → *Add offline account*, or
+*Play offline* when you press Play without an account). An offline account is just a username:
+
+- Usernames are 3-16 letters, numbers or `_` (`^[A-Za-z0-9_]{3,16}$`). Names that differ only in case (`Steve` /
+  `steve`) can't both be added as offline accounts.
+- The UUID is the one vanilla offline mode uses: `UUID.nameUUIDFromBytes("OfflinePlayer:<name>")` (version 3).
+- The game is started with `--userType legacy` and access token `0`. No Microsoft, Xbox or Mojang sign-in calls are made.
+- You play with the default Steve/Alex skin.
+
+**What works:** singleplayer, LAN and servers with `online-mode=false`, exactly like vanilla offline mode.
+
+**What doesn't:** online-mode servers (they reject the join, as in vanilla), and everything on Velo Network - friends,
+parties, Store, Velo+, coins, referrals, the website sign-in code, skin uploads and cosmetics sync. These need a
+Microsoft account. In-game, an offline session never signs in to Velo Network (or lets the Session Auto-Fixer swap in)
+the launcher's Microsoft account.
+
+Offline accounts are saved in the same `config/account.json` with `"type": "OFFLINE"`; existing files load unchanged
+(entries without a type are Microsoft accounts). Microsoft sign-in works exactly as before.
+
 ## Building
 
 Requires network access on first build (Gradle downloads Minecraft,
