@@ -34,7 +34,12 @@ public final class AuthSession {
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 	private static final String CONFIG_ID = "account.json";
 
-	private record AccountsFile(List<MinecraftSession> accounts, String activeUuid) {
+	/**
+	 * The {@code account.json} shape. Field names are a contract with the game mod (ActiveAccountReader,
+	 * VeloAccountAuth), so they must never be renamed. Each account may carry {@code "type"} ({@code "MICROSOFT"} or
+	 * {@code "OFFLINE"}); older entries have none and load as Microsoft accounts with no rewrite.
+	 */
+	record AccountsFile(List<MinecraftSession> accounts, String activeUuid) {
 	}
 
 	private AuthSession() {
@@ -96,23 +101,32 @@ public final class AuthSession {
 			return new AccountsFile(List.of(), null);
 		}
 		try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-			JsonElement root = JsonParser.parseReader(reader);
-			if (root == null || root.isJsonNull()) {
-				return new AccountsFile(List.of(), null);
-			}
-			if (root.isJsonObject() && root.getAsJsonObject().has("accounts")) {
-				AccountsFile parsed = GSON.fromJson(root, AccountsFile.class);
-				if (parsed == null) {
-					return new AccountsFile(List.of(), null);
-				}
-				return new AccountsFile(parsed.accounts() != null ? parsed.accounts() : List.of(), parsed.activeUuid());
-			}
-			// Legacy pre-multi-account format: a bare MinecraftSession.
-			MinecraftSession legacy = GSON.fromJson(root, MinecraftSession.class);
-			return legacy == null ? new AccountsFile(List.of(), null) : new AccountsFile(List.of(legacy), legacy.uuid());
+			return parse(JsonParser.parseReader(reader));
 		} catch (IOException | JsonSyntaxException e) {
 			return new AccountsFile(List.of(), null);
 		}
+	}
+
+	/** Parses {@code account.json} content (current or legacy single-object format). Package-private for tests. */
+	static AccountsFile parse(JsonElement root) {
+		if (root == null || root.isJsonNull()) {
+			return new AccountsFile(List.of(), null);
+		}
+		if (root.isJsonObject() && root.getAsJsonObject().has("accounts")) {
+			AccountsFile parsed = GSON.fromJson(root, AccountsFile.class);
+			if (parsed == null) {
+				return new AccountsFile(List.of(), null);
+			}
+			return new AccountsFile(parsed.accounts() != null ? parsed.accounts() : List.of(), parsed.activeUuid());
+		}
+		// Legacy pre-multi-account format: a bare MinecraftSession (always a Microsoft account).
+		MinecraftSession legacy = GSON.fromJson(root, MinecraftSession.class);
+		return legacy == null ? new AccountsFile(List.of(), null) : new AccountsFile(List.of(legacy), legacy.uuid());
+	}
+
+	/** Serialises the file exactly as {@link #write} does. Package-private for tests. */
+	static String toJson(AccountsFile file) {
+		return GSON.toJson(file);
 	}
 
 	/**
