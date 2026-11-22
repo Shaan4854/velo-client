@@ -102,7 +102,7 @@ public final class NameStyleScreen extends VeloWindow implements net.veloclient.
 	}
 
 	private boolean plus() {
-		return NameStyles.plus();
+		return NameStyles.plus() || net.veloclient.velo.client.offline.OfflineCosmetics.isActive(); // offline-cosmetics
 	}
 
 	/** Saves the edited style (switched on only for Velo+ members) - the game and the launcher pick it up at once. */

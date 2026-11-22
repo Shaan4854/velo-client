@@ -146,7 +146,7 @@ public final class VeloSkinsScreen extends VeloWindow implements net.veloclient.
 				.ifPresent(skin -> net.veloclient.velo.client.skins.SkinTryOn.setEquipped(texture(skin), skin.slim()));
 	}
 
-	private static Identifier texture(SkinLibrary.Skin skin) {
+	public static Identifier texture(SkinLibrary.Skin skin) { // offline-cosmetics: was private
 		return TEXTURES.computeIfAbsent(skin.id(), id -> {
 			try (var in = Files.newInputStream(SkinLibrary.png(skin))) {
 				NativeImage image = modernize(NativeImage.read(in));
@@ -509,6 +509,7 @@ public final class VeloSkinsScreen extends VeloWindow implements net.veloclient.
 	}
 
 	private void equip(SkinLibrary.Skin skin) {
+		if (net.veloclient.velo.client.offline.OfflineCosmetics.isActive()) { try { net.veloclient.velo.client.offline.OfflineSkin.equipLocal(skin); status = net.veloclient.velo.client.offline.OfflineSkin.EQUIPPED_MESSAGE; } catch (Exception e) { status = e.getMessage(); } return; } // offline-cosmetics
 		busy = true;
 		status = "Uploading " + skin.name() + "...";
 		Executors.newVirtualThreadPerTaskExecutor().submit(() -> {
@@ -526,6 +527,8 @@ public final class VeloSkinsScreen extends VeloWindow implements net.veloclient.
 	 * away; others see it once you rejoin. Used by this screen and by loadouts.
 	 */
 	public static void upload(SkinLibrary.Skin skin) throws Exception {
+		if (net.veloclient.velo.client.offline.OfflineCosmetics.isActive()) { net.veloclient.velo.client.offline.OfflineSkin.equipLocal(skin); return; } // offline-cosmetics
+		if (net.veloclient.velo.client.network.VeloServerClient.isOfflineGameSession()) throw new java.io.IOException(net.veloclient.velo.client.offline.OfflineCosmetics.SKINS_NEED_MICROSOFT); // offline-cosmetics
 		String token = SkinLibrary.gameAccessToken();
 		SkinLibrary.equip(skin, token);
 		//? if <26.1 {

@@ -278,7 +278,7 @@ public final class Loadouts {
 		if (loadout.nameStyleOn() != null) {
 			var style = net.veloclient.velo.client.namestyle.NameStyle.decode(loadout.nameStyle());
 			net.veloclient.velo.client.namestyle.NameStyles.save(style == null ? net.veloclient.velo.client.namestyle.NameStyles.own() : style,
-					loadout.nameStyleOn() && net.veloclient.velo.client.namestyle.NameStyles.plus());
+					loadout.nameStyleOn() && (net.veloclient.velo.client.namestyle.NameStyles.plus() || net.veloclient.velo.client.offline.OfflineCosmetics.isActive())); // offline-cosmetics
 		}
 		if (loadout.wear() != null) {
 			net.veloclient.velo.client.cosmetics.wear.WearManager.clearPreview();

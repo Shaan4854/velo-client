@@ -29,7 +29,8 @@
 			"net.veloclient.velo.VeloClient"
 		],
 		"client": [
-			"net.veloclient.velo.client.VeloClientMod"
+			"net.veloclient.velo.client.VeloClientMod",
+			"net.veloclient.velo.client.offline.OfflineCosmeticsInit"
 		]
 	},
 	"depends": {

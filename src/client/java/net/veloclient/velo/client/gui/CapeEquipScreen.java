@@ -302,6 +302,7 @@ public final class CapeEquipScreen extends VeloWindow implements net.veloclient.
 	public static void drawSlots(DrawContext context, net.minecraft.client.font.TextRenderer font, int x, int y, int activeTab, int mouseX, int mouseY) {
 		armorShown = false;
 		net.veloclient.velo.client.gui.window.VeloWindow.unshifted(context, () -> drawSlotsInPlace(context, font, activeTab, mouseX, mouseY));
+		net.veloclient.velo.client.gui.window.VeloWindow.unshifted(context, () -> net.veloclient.velo.client.offline.OfflineCredits.draw(context, font, rightX(), frameX + frameW, frameBottom)); // offline-cosmetics
 	}
 
 	private static String[][] kindRows() {

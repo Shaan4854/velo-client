@@ -72,6 +72,7 @@ public final class StoreClient {
 	}
 
 	public static boolean owns(String itemId) {
+		if (net.veloclient.velo.client.offline.OfflineCosmetics.isActive()) return true; // offline-cosmetics
 		return owned.contains(itemId);
 	}
 
@@ -81,6 +82,7 @@ public final class StoreClient {
 
 	/** True once the wallet (owned items) has been loaded from the server. */
 	public static boolean walletLoaded() {
+		if (net.veloclient.velo.client.offline.OfflineCosmetics.isActive()) return true; // offline-cosmetics
 		return walletLoaded;
 	}
 
@@ -679,10 +681,12 @@ public final class StoreClient {
 	}
 
 	private static JsonObject get(String path) throws Exception {
+		if (net.veloclient.velo.client.offline.OfflineCosmetics.isActive() && !net.veloclient.velo.client.offline.OfflineCosmetics.allowedWhileActive(path)) throw new java.io.IOException(net.veloclient.velo.client.offline.OfflineCosmetics.STORE_BLOCKED); // offline-cosmetics
 		return send(builder(path).GET().build());
 	}
 
 	private static JsonObject post(String path, JsonObject body) throws Exception {
+		if (net.veloclient.velo.client.offline.OfflineCosmetics.isActive()) throw new java.io.IOException(net.veloclient.velo.client.offline.OfflineCosmetics.STORE_BLOCKED); // offline-cosmetics
 		return send(builder(path).header("Content-Type", "application/json")
 				.POST(HttpRequest.BodyPublishers.ofString(body.toString())).build());
 	}

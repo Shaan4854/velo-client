@@ -100,6 +100,7 @@ public final class StoreItemDetailScreen extends VeloWindow {
 	private void onAction() {
 		if (StoreOwnership.owns(item.id())) {
 			String id = findLibraryIdFor(item.id());
+			if (id == null && net.veloclient.velo.client.offline.OfflineCosmetics.isActive() && (id = net.veloclient.velo.client.offline.OfflineCosmetics.importCape(item.id())) == null) { status = Text.literal(net.veloclient.velo.client.offline.OfflineCosmetics.DOWNLOADING); return; } // offline-cosmetics
 			if (id == null) {
 				net.veloclient.velo.client.store.StoreRestore.restoreMissing();
 				id = findLibraryIdFor(item.id());

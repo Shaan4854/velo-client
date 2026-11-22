@@ -196,7 +196,7 @@ public final class NameStyles {
 			return null;
 		}
 		if (name.equalsIgnoreCase(selfName())) {
-			if (!ownEnabled() || !plus()) {
+			if (!ownEnabled() || !(plus() || net.veloclient.velo.client.offline.OfflineCosmetics.isActive())) { // offline-cosmetics
 				return null;
 			}
 			NameStyle style = own();
