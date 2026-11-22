@@ -63,6 +63,7 @@ public final class LauncherSettings {
 		public boolean animateHomeBackground = true;
 		/** System check kinds (finding titles) that no longer interrupt a launch. */
 		public java.util.List<String> silencedChecks = new java.util.ArrayList<>();
+		public boolean offlineCosmetics; // offline-cosmetics: local cosmetics unlock for offline accounts, off by default
 	}
 
 	private static Data cached;

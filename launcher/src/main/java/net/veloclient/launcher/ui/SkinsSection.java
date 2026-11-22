@@ -144,6 +144,7 @@ final class SkinsSection {
 		show.accept(null);
 		grid.getChildren().add(currentCard(host, status, refresh, show));
 		String equipped = SkinLibrary.equippedId();
+		if (host.session() != null && host.session().isOffline() && net.veloclient.launcher.offline.OfflineCosmetics.lockerUnlocked()) equipped = net.veloclient.launcher.offline.OfflineSkinSetting.equippedId(); // offline-cosmetics
 		for (SkinLibrary.Skin skin : skins) {
 			boolean isEquipped = skin.id().equals(equipped);
 			ImageView preview = new ImageView(front(skin));
@@ -158,7 +159,7 @@ final class SkinsSection {
 			equip.getStyleClass().add(isEquipped ? "ghost-button" : "primary-button");
 			equip.setDisable(isEquipped);
 			equip.setMaxWidth(Double.MAX_VALUE);
-			if (host.session() != null && host.session().isOffline() && !isEquipped) {
+			if (host.session() != null && host.session().isOffline() && !isEquipped && !net.veloclient.launcher.offline.OfflineCosmetics.lockerUnlocked()) { // offline-cosmetics
 				equip.setDisable(true);
 				equip.setTooltip(new javafx.scene.control.Tooltip(NEEDS_MICROSOFT));
 			}
@@ -167,6 +168,7 @@ final class SkinsSection {
 					status.setText("Sign in first.");
 					return;
 				}
+				if (host.session().isOffline() && net.veloclient.launcher.offline.OfflineCosmetics.lockerUnlocked()) { status.setText(net.veloclient.launcher.offline.OfflineSkinSetting.equip(skin)); refresh.run(); return; } // offline-cosmetics
 				if (host.session().isOffline()) {
 					status.setText(NEEDS_MICROSOFT);
 					return;

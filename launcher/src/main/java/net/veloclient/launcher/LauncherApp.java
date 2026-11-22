@@ -5658,6 +5658,7 @@ public final class LauncherApp extends Application {
 		net.veloclient.launcher.ui.SettingsUi.row(updates, "Minimize when the game starts", "The launcher frees its memory while it's in the background",
 				"While minimized (or in the background with a game running) the launcher drops the page you were on, stops all animations"
 						+ " and empties its image caches, so it uses as little RAM and CPU as possible while you play.", minimize);
+		net.veloclient.launcher.offline.OfflineCosmetics.addSettingsRow(updates); // offline-cosmetics
 		Button systemCheck = new Button("Run check");
 		systemCheck.setOnAction(e -> net.veloclient.launcher.ui.SystemCheckDialog.showAll(stage,
 				net.veloclient.launcher.launch.SystemHealth.check(null)));

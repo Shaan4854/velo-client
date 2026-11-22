@@ -213,6 +213,7 @@ public final class CosmeticsView {
 			region.setMinHeight(Region.USE_PREF_SIZE);
 		}
 		VBox left = new VBox(14, title, stage, loadouts);
+		left.getChildren().add(1, net.veloclient.launcher.offline.OfflineCosmetics.creditLabel()); // offline-cosmetics
 		left.setMinWidth(320);
 		left.setPrefWidth(380);
 		left.setMaxWidth(420);

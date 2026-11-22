@@ -38,6 +38,7 @@ public final class StoreApi {
 
 	/** True once the wallet (what you own) came from the server this run. */
 	public static boolean walletLoaded() {
+		if (net.veloclient.launcher.offline.OfflineCosmetics.lockerUnlocked()) return true; // offline-cosmetics
 		return walletLoaded;
 	}
 	private static volatile boolean owner;
@@ -86,6 +87,7 @@ public final class StoreApi {
 	}
 
 	public static boolean owns(String itemId) {
+		if (net.veloclient.launcher.offline.OfflineCosmetics.lockerUnlocked()) return true; // offline-cosmetics
 		return owned.contains(itemId);
 	}
 
@@ -745,6 +747,7 @@ public final class StoreApi {
 	}
 
 	private static JsonObject get(String path) throws StoreError {
+		if (net.veloclient.launcher.offline.OfflineCosmetics.lockerUnlocked() && path.equals("/v1/store/wallet")) throw new StoreError(0, "Offline account - nothing to load"); // offline-cosmetics
 		if (DEMO && path.startsWith("/v1/admin/") && System.getProperty("velo.adminToken") != null) {
 			// Dev-only tour against a test server (-Dvelo.serverUrl + -Dvelo.adminToken): real owner data.
 			return send(request(path).header("X-Velo-Admin-Token", System.getProperty("velo.adminToken")).GET().build());
@@ -759,6 +762,7 @@ public final class StoreApi {
 	}
 
 	private static JsonObject post(String path, JsonObject body) throws StoreError {
+		if (net.veloclient.launcher.offline.OfflineCosmetics.lockerUnlocked()) throw new StoreError(0, "Offline account - Store purchases need a Microsoft account"); // offline-cosmetics
 		return send(request(path).header("Content-Type", "application/json")
 				.POST(HttpRequest.BodyPublishers.ofString(body.toString())).build());
 	}
