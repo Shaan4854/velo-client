@@ -21,6 +21,23 @@ final class OfflineGate {
 		return "true".equals(flag) && offlineGameSession && veloSessionToken == null;
 	}
 
+	/**
+	 * Catalog cloaks with no copy in the cloak library yet, matched by name like the Store's own equip does (an import
+	 * gets a fresh library id, its name is the item's name). Keeps catalog order; null names never match.
+	 */
+	static <T> java.util.List<T> notInLibrary(java.util.List<T> catalog, java.util.function.Function<T, String> name,
+			java.util.Collection<String> libraryNames) {
+		java.util.Set<String> have = new java.util.HashSet<>(libraryNames);
+		java.util.List<T> missing = new java.util.ArrayList<>();
+		for (T item : catalog) {
+			String itemName = name.apply(item);
+			if (itemName == null || !have.contains(itemName)) {
+				missing.add(item);
+			}
+		}
+		return missing;
+	}
+
 	/** Skin library ids are 32 lowercase hex characters (a dashless UUID); anything else is never turned into a path. */
 	static boolean validSkinId(String id) {
 		return id != null && id.matches("[0-9a-f]{32}");

@@ -1038,6 +1038,7 @@ public final class CapeEquipScreen extends VeloWindow implements net.veloclient.
 					new net.veloclient.velo.client.gui.widget.VeloContextMenu.Entry("Delete", true, () -> confirmDelete(definition))));
 		}
 
+		net.veloclient.velo.client.offline.OfflineLockerCloaks.addTiles(capeTileW, regionTileH, tile -> { addSelectableChild(tile); scrollRegion.addRow(tile); }, message -> { status = Text.literal(message); layoutContent(); }); // offline-cosmetics
 		VeloButton importTile = new VeloButton(0, 0, capeTileW, regionTileH, Text.literal("+ Your own cloak"), b -> pickFile());
 		addSelectableChild(importTile);
 		scrollRegion.addRow(importTile);
@@ -1115,10 +1116,13 @@ public final class CapeEquipScreen extends VeloWindow implements net.veloclient.
 		}
 		int gridX = gridX();
 		// Heading over the collection: "Cloaks 12" + a quiet hint.
-		String name = aurasTab ? "Auras" : wingsTab ? "Wings" : "Cloaks";
+		String name = aurasTab ? "Auras" : wingsTab ? "Wings" : wearTab ? "Bodywear" : "Cloaks"; // Bodywear: was mislabelled "Cloaks" (pre-existing)
 		int count = aurasTab ? (int) net.veloclient.velo.client.cosmetics.aura.AuraManager.catalog().stream()
 				.filter(t -> net.veloclient.velo.client.cosmetics.aura.AuraManager.owns(t.id())).count()
-				: wingsTab ? net.veloclient.velo.client.cosmetics.wings.WingsManager.owned().size() : CapeManager.library().size();
+				: wingsTab ? net.veloclient.velo.client.cosmetics.wings.WingsManager.owned().size()
+				: wearTab ? (int) net.veloclient.velo.client.cosmetics.wear.WearManager.all().stream()
+						.filter(t -> net.veloclient.velo.client.cosmetics.wear.WearManager.owns(t.id())).count()
+				: net.veloclient.velo.client.offline.OfflineLockerCloaks.ownedCount(CapeManager.library().size()); // offline-cosmetics
 		Text heading = MenuKit.display(name);
 		MenuKit.text(context, this.textRenderer, heading, gridX, rightTop() + 1, MenuKit.TEXT);
 		Text countText = MenuKit.small(count + " OWNED");

@@ -164,7 +164,12 @@ public final class OfflineCosmetics {
 	 * again on the FX thread right before equipping; on a change nothing is equipped and nothing is left pending.
 	 */
 	public static void importAndEquipCape(net.veloclient.launcher.data.StoreItem item, java.util.function.Supplier<java.util.Optional<String>> libraryId) {
-		Feedback page = feedback == null ? Feedback.NONE : feedback;
+		importAndEquipCape(item, libraryId, feedback == null ? Feedback.NONE : feedback);
+	}
+
+	/** Same, reporting to the given page (the launcher Locker's Cloaks panel). FX thread. */
+	public static void importAndEquipCape(net.veloclient.launcher.data.StoreItem item, java.util.function.Supplier<java.util.Optional<String>> libraryId,
+			Feedback page) {
 		String clickedAccount = net.veloclient.launcher.data.VeloPaths.account();
 		deferred = true;
 		if (!stillSameOfflineAccount(clickedAccount)) {
@@ -209,6 +214,65 @@ public final class OfflineCosmetics {
 				page.refresh().run();
 			});
 		});
+	}
+
+	/**
+	 * Catalog cloaks with no copy in the cloak library yet, matched by name like the Store page's equip does (an import
+	 * gets a fresh library id; its name is the item's name). Keeps catalog order; null names never match.
+	 */
+	static <T> List<T> notInLibrary(List<T> catalog, java.util.function.Function<T, String> name, java.util.Collection<String> libraryNames) {
+		java.util.Set<String> have = new java.util.HashSet<>(libraryNames);
+		List<T> missing = new java.util.ArrayList<>();
+		for (T item : catalog) {
+			String itemName = name.apply(item);
+			if (itemName == null || !have.contains(itemName)) {
+				missing.add(item);
+			}
+		}
+		return missing;
+	}
+
+	/** Locker > Cloaks while unlocked: every catalog cloak not in the library yet (empty when locked). */
+	public static List<net.veloclient.launcher.data.StoreItem> lockerCatalogCloaks(List<net.veloclient.launcher.data.CapeEntry> library) {
+		if (!lockerUnlocked()) {
+			return List.of();
+		}
+		List<String> names = library.stream().filter(net.veloclient.launcher.data.CapeEntry::animated)
+				.map(net.veloclient.launcher.data.CapeEntry::name).toList();
+		return notInLibrary(net.veloclient.launcher.data.StoreCatalog.all(), net.veloclient.launcher.data.StoreItem::name, names);
+	}
+
+	/** A cell factory from the Locker: (art, name, click) -> the cell, added to its grid. */
+	public interface CellSink {
+		void add(javafx.scene.Node art, String name, Runnable onClick);
+	}
+
+	/**
+	 * Adds the {@link #lockerCatalogCloaks} cells to the launcher Locker's Cloaks grid (unless it is filtered to static
+	 * cloaks - these are all animated). A click imports that one cloak in the background and wears it, re-checking the
+	 * account first ({@link #importAndEquipCape}); the panel shows the download and refreshes when it's done.
+	 */
+	public static void addLockerCloaks(List<net.veloclient.launcher.data.StoreItem> cloaks, boolean staticOnly, CellSink sink,
+			javafx.scene.Node toastAnchor, Runnable refresh) {
+		if (staticOnly) {
+			return;
+		}
+		for (net.veloclient.launcher.data.StoreItem item : cloaks) {
+			sink.add(net.veloclient.launcher.ui.StoreTiles.capeArt(item, null, 96), item.name(), () -> {
+				if (!lockerUnlocked()) {
+					return;
+				}
+				Feedback page = new Feedback(text -> net.veloclient.launcher.ui.Toasts.show(toastAnchor, text), refresh);
+				importAndEquipCape(item, () -> libraryIdFor(item), page);
+			});
+		}
+	}
+
+	private static java.util.Optional<String> libraryIdFor(net.veloclient.launcher.data.StoreItem item) {
+		return net.veloclient.launcher.data.CapeLibrary.listAll().stream()
+				.filter(entry -> entry.animated() && entry.name().equals(item.name()))
+				.reduce((first, second) -> second)
+				.map(net.veloclient.launcher.data.CapeEntry::id);
 	}
 
 	/** Settings row with the toggle (default off). */

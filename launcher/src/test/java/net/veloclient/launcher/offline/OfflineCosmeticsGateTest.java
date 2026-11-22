@@ -130,4 +130,16 @@ class OfflineCosmeticsGateTest {
 		assertFalse(OfflineCosmetics.blockedWhileUnlocked("/v1/rewards"));
 		assertFalse(OfflineCosmetics.blockedWhileUnlocked("/v1/store/catalog"));
 	}
+
+	@Test
+	void lockerListsCatalogCloaksNotInTheLibrary() {
+		java.util.List<String> catalog = java.util.List.of("Aurora", "Ember", "Nebula", "Tide");
+		org.junit.jupiter.api.Assertions.assertEquals(catalog, OfflineCosmetics.notInLibrary(catalog, n -> n, java.util.List.of()));
+		org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of("Aurora", "Tide"),
+				OfflineCosmetics.notInLibrary(catalog, n -> n, java.util.List.of("Ember", "Nebula", "My own picture")));
+		org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of(), OfflineCosmetics.notInLibrary(catalog, n -> n, catalog));
+		// Exact names only, and an item without a name is never hidden.
+		org.junit.jupiter.api.Assertions.assertEquals(java.util.Arrays.asList("ember", null),
+				OfflineCosmetics.notInLibrary(java.util.Arrays.asList("ember", null), n -> n, java.util.List.of("Ember")));
+	}
 }

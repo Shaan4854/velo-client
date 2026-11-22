@@ -1241,7 +1241,8 @@ public final class CosmeticsView {
 		importButton.getStyleClass().add("button-sm");
 		importButton.setTooltip(new javafx.scene.control.Tooltip("Upload your own cloak: a cloak texture, or any picture or GIF"));
 		importButton.setOnAction(e -> upload.run());
-		VBox panel = panelShell("Cloaks", capes.size(), importButton, storeLink(host, "Get more"));
+		List<net.veloclient.launcher.data.StoreItem> catalogCloaks = net.veloclient.launcher.offline.OfflineCosmetics.lockerCatalogCloaks(capes); // offline-cosmetics
+		VBox panel = panelShell("Cloaks", capes.size() + catalogCloaks.size(), importButton, storeLink(host, "Get more")); // offline-cosmetics: + catalog cloaks
 		HBox filters = new HBox(6);
 		String[] names = {"All", "Animated", "Static"};
 		for (int i = 0; i < names.length; i++) {
@@ -1285,6 +1286,7 @@ public final class CosmeticsView {
 					done -> CosmeticUi.framesAsync(cape, done), cape.animated());
 			grid.getChildren().add(cellNode);
 		}
+		net.veloclient.launcher.offline.OfflineCosmetics.addLockerCloaks(catalogCloaks, capeFilter == 2, (art, name, click) -> grid.getChildren().add(cell(art, "#5ac8ff", name, false, false, click)), panel, refresh); // offline-cosmetics
 		panel.getChildren().addAll(filters, scroll(grid));
 		CapeEntry chosen = capes.stream().filter(c -> c.id().equals(selected)).findFirst().orElse(null);
 		if (chosen != null) {
