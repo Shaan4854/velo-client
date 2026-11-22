@@ -10,7 +10,7 @@ version="${1:?usage: update_aur.sh <version>}"
 here="$(cd "$(dirname "$0")/../.." && pwd)"
 dir="$here/packaging/aur"
 asset="velo-client-launcher-${version}-linux-x64.tar.gz"
-url="https://github.com/Shaan4854/velo-client/releases/download/v${version}/${asset}"
+url="https://github.com/velo345/velo-client/releases/download/v${version}/${asset}"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
