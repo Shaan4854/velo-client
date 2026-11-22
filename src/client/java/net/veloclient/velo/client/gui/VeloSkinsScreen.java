@@ -334,7 +334,7 @@ public final class VeloSkinsScreen extends VeloWindow implements net.veloclient.
 			}
 			String name = skin == null ? "Your account" : skin.name();
 			MenuKit.text(context, this.textRenderer, MenuKit.fit(this.textRenderer, MenuKit.uiBold(name), cardW - 16), cx + 8, cy + 95, MenuKit.TEXT);
-			String sub = skin == null ? "Wearing now" : slim ? "Slim arms" : "Classic arms";
+			String sub = skin == null ? (equipped != null && net.veloclient.velo.client.offline.OfflineCosmetics.isActive() ? "Account skin" : "Wearing now") : slim ? "Slim arms" : "Classic arms"; // offline-cosmetics: a local skin is worn, not this one
 			MenuKit.text(context, this.textRenderer, MenuKit.small(sub.toUpperCase(java.util.Locale.ROOT)), cx + 8, cy + 108, MenuKit.TEXT_3);
 			if (isEquipped) {
 				Text tag = MenuKit.small("EQUIPPED");
