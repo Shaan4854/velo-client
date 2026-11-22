@@ -18,9 +18,11 @@ import net.veloclient.velo.client.network.VeloServerClient;
  */
 public final class OfflineCosmetics {
 
-	public static final String PROPERTY = "velo.offlineCosmetics";
-	/** The credit Velo's founder asked for - always shown in the Locker, the launcher Locker, README and NOTICE.md. */
-	public static final String CREDIT = "Cosmetics art \u00a9 Velo Client, used with permission from founder Velo2k.";
+	public static final String PROPERTY = OfflineGate.PROPERTY;
+	/** The credit Velo's founder asked for, split where it may wrap - always shown in the Locker, README and NOTICE.md. */
+	public static final String CREDIT_LINE_1 = "Cosmetics art \u00a9 Velo Client,";
+	public static final String CREDIT_LINE_2 = "used with permission from founder Velo2k.";
+	public static final String CREDIT = CREDIT_LINE_1 + " " + CREDIT_LINE_2;
 	public static final String STORE_BLOCKED = "Offline account - Store purchases need a Microsoft account";
 	public static final String DOWNLOADING = "Downloading the cloak... press Equip again in a moment";
 	public static final String SKINS_NEED_MICROSOFT = "Skins need a Microsoft account";
@@ -60,7 +62,7 @@ public final class OfflineCosmetics {
 
 	/** The gate itself, without Minecraft: flag exactly "true", an offline game, and no Velo session token. */
 	static boolean decide(String flag, boolean offlineGameSession, String veloSessionToken) {
-		return "true".equals(flag) && offlineGameSession && veloSessionToken == null;
+		return OfflineGate.decide(flag, offlineGameSession, veloSessionToken);
 	}
 
 	/** Store requests that may still run while active: only the public catalog the Store page always loads. */

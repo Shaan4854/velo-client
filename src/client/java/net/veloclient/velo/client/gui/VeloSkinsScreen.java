@@ -292,7 +292,7 @@ public final class VeloSkinsScreen extends VeloWindow implements net.veloclient.
 		List<SkinLibrary.Skin> skins = new ArrayList<>();
 		skins.add(null);
 		skins.addAll(library);
-		String equipped = SkinLibrary.equippedId();
+		String equipped = net.veloclient.velo.client.offline.OfflineSkin.equippedIdOr(SkinLibrary.equippedId()); // offline-cosmetics
 		int top = ty + 34;
 		int bottom = contentBottom() - 16;
 		int columns = Math.max(3, (width + CARD_GAP) / (112 + CARD_GAP));
@@ -422,7 +422,7 @@ public final class VeloSkinsScreen extends VeloWindow implements net.veloclient.
 			}));
 			return;
 		}
-		boolean isEquipped = skin.id().equals(SkinLibrary.equippedId());
+		boolean isEquipped = skin.id().equals(net.veloclient.velo.client.offline.OfflineSkin.equippedIdOr(SkinLibrary.equippedId())); // offline-cosmetics
 		hits.add(button(context, x + 8, by, w - 16, isEquipped ? "Equipped" : busy ? "Uploading..." : "Equip this skin", !isEquipped, mouseX, mouseY, () -> {
 			if (!isEquipped && !busy) {
 				equip(skin);
