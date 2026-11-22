@@ -57,7 +57,7 @@ test {
 // processResources -> bundleGameJars, which builds every Minecraft version of the mod. Keeping resources off the
 // test classpaths lets ":launcher:test" run in seconds. The release build (jar/run/jpackage) is unchanged.
 sourceSets.test.compileClasspath = files(sourceSets.main.output.classesDirs) + configurations.testCompileClasspath
-sourceSets.test.runtimeClasspath = files(sourceSets.test.output.classesDirs, sourceSets.main.output.classesDirs) + configurations.testRuntimeClasspath
+sourceSets.test.runtimeClasspath = sourceSets.test.output + files(sourceSets.main.output.classesDirs) + configurations.testRuntimeClasspath
 
 // Bundles each supported Minecraft version's built velo-client jar straight
 // into the launcher's own resources, so it's a fully self-contained app that
@@ -161,7 +161,7 @@ tasks.register("bundleJavaRuntimeFallback") {
 // hardcoded strings scattered across LauncherApp/GameLauncher. jpackageDist
 // below reuses the same value for the native installer's version.
 // -PlauncherVersion=1.2.4 (CI input) builds a test installer under another version, e.g. an update-test target.
-def launcherAppVersion = (project.findProperty("launcherVersion") ?: "1.4.3").toString()
+def launcherAppVersion = (project.findProperty("launcherVersion") ?: "1.4.4").toString()
 // A fixed identity for the Windows installer across every version - WiX
 // needs this (--win-upgrade-uuid below) to recognize a new installer as an
 // upgrade of whatever's already installed rather than an unrelated product,
