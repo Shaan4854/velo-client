@@ -1,0 +1,53 @@
+[
+ {
+  "tag_name": "v1.4.3",
+  "name": "Velo Client 1.4.3: Offline accounts",
+  "draft": false,
+  "prerelease": false,
+  "html_url": "https://github.com/Shaan4854/velo-client/releases/tag/v1.4.3",
+  "published_at": "2026-11-22T01:22:09Z",
+  "body": "(trimmed)",
+  "assets": [
+   {
+    "id": 777474766,
+    "name": "velo-client-launcher-1.4.3-app-linux-x64.zip",
+    "size": 368403631,
+    "digest": "sha256:5aa46c1c0ac3cb4c03a8e6afda18b0a1a38ea884470f2ad210663d43f1c5822e",
+    "updated_at": "2026-11-22T01:30:58Z",
+    "browser_download_url": "https://github.com/Shaan4854/velo-client/releases/download/v1.4.3/velo-client-launcher-1.4.3-app-linux-x64.zip"
+   },
+   {
+    "id": 777480179,
+    "name": "velo-client-launcher-1.4.3-app-macos-arm64.zip",
+    "size": 368453658,
+    "digest": "sha256:b62e48c56a5488c5295f284ba1ce30a602d0a4d9be5658f2e9b41764cb72749a",
+    "updated_at": "2026-11-22T01:33:38Z",
+    "browser_download_url": "https://github.com/Shaan4854/velo-client/releases/download/v1.4.3/velo-client-launcher-1.4.3-app-macos-arm64.zip"
+   },
+   {
+    "id": 777474767,
+    "name": "velo-client-launcher-1.4.3-linux-x64.tar.gz",
+    "size": 433960640,
+    "digest": "sha256:46f6592d991533210b7a5fa598200f9032a4cdc51737f7c3b06df4936d5eafb6",
+    "updated_at": "2026-11-22T01:30:57Z",
+    "browser_download_url": "https://github.com/Shaan4854/velo-client/releases/download/v1.4.3/velo-client-launcher-1.4.3-linux-x64.tar.gz"
+   },
+   {
+    "id": 777480180,
+    "name": "velo-client-launcher-1.4.3-macos-arm64.dmg",
+    "size": 435457838,
+    "digest": "sha256:a9e48636a654725f95bba2633698a4480ad04110bbeff2f1107dfb104d649554",
+    "updated_at": "2026-11-22T01:33:42Z",
+    "browser_download_url": "https://github.com/Shaan4854/velo-client/releases/download/v1.4.3/velo-client-launcher-1.4.3-macos-arm64.dmg"
+   },
+   {
+    "id": 777474769,
+    "name": "velo-client-launcher_1.4.3_amd64.deb",
+    "size": 409887378,
+    "digest": "sha256:a1110927f37e9c832b4f7b9b816bf4a2f5704f0336a6309e0bb679b6251d4b69",
+    "updated_at": "2026-11-22T01:30:59Z",
+    "browser_download_url": "https://github.com/Shaan4854/velo-client/releases/download/v1.4.3/velo-client-launcher_1.4.3_amd64.deb"
+   }
+  ]
+ }
+]
