@@ -86,4 +86,48 @@ class OfflineCosmeticsGateTest {
 		}
 		assertFalse(OfflineCosmetics.blockedWhileUnlocked(null));
 	}
+
+	private static final String OFFLINE_A = "0123456789abcdef0123456789abcdef";
+	private static final String OFFLINE_B = "fedcba9876543210fedcba9876543210";
+	private static final String MS_UUID = "11112222333344445555666677778888";
+
+	@Test
+	void cloakImportEquipsWhenNothingChanged() {
+		assertTrue(OfflineCosmetics.mayEquipAfterImport(OFFLINE_A, true, OFFLINE_A, null));
+	}
+
+	@Test
+	void cloakImportDoesNotEquipAfterAMicrosoftSwitch() {
+		// A Microsoft session: a different uuid, the unlock off (not an offline account) and usually a Velo token.
+		assertFalse(OfflineCosmetics.mayEquipAfterImport(OFFLINE_A, false, MS_UUID, "velo-token"));
+		assertFalse(OfflineCosmetics.mayEquipAfterImport(OFFLINE_A, false, MS_UUID, null));
+		assertFalse(OfflineCosmetics.mayEquipAfterImport(OFFLINE_A, true, MS_UUID, null));
+	}
+
+	@Test
+	void cloakImportDoesNotEquipOnAnotherOfflineAccount() {
+		assertFalse(OfflineCosmetics.mayEquipAfterImport(OFFLINE_A, true, OFFLINE_B, null));
+		assertFalse(OfflineCosmetics.mayEquipAfterImport(OFFLINE_A, true, null, null));
+		assertFalse(OfflineCosmetics.mayEquipAfterImport(null, true, null, null));
+	}
+
+	@Test
+	void cloakImportDoesNotEquipWhenTheToggleWasTurnedOff() {
+		assertFalse(OfflineCosmetics.mayEquipAfterImport(OFFLINE_A, false, OFFLINE_A, null));
+	}
+
+	@Test
+	void cloakImportDoesNotEquipWithASessionToken() {
+		assertFalse(OfflineCosmetics.mayEquipAfterImport(OFFLINE_A, true, OFFLINE_A, "velo-token"));
+	}
+
+	@Test
+	void doubleSlashPathsAreBlocked() {
+		assertTrue(OfflineCosmetics.blockedWhileUnlocked("//v1/store/wallet"));
+		assertTrue(OfflineCosmetics.blockedWhileUnlocked("/v1//store/wallet"));
+		assertTrue(OfflineCosmetics.blockedWhileUnlocked("/v1/store//catalog"));
+		assertTrue(OfflineCosmetics.blockedWhileUnlocked("/v1//rewards"));
+		assertFalse(OfflineCosmetics.blockedWhileUnlocked("/v1/rewards"));
+		assertFalse(OfflineCosmetics.blockedWhileUnlocked("/v1/store/catalog"));
+	}
 }

@@ -186,7 +186,7 @@ public final class ItemPage {
 				return;
 			}
 			if (purchase.owned().getAsBoolean()) {
-				purchase.equip().run();
+				if (net.veloclient.launcher.offline.OfflineCosmetics.runEquip(purchase.equip(), status::setText, refresh[0])) { refresh[0].run(); return; } // offline-cosmetics
 				Toasts.show(action, purchase.noun().substring(0, 1).toUpperCase() + purchase.noun().substring(1) + " equipped - shows in your next game");
 				status.setText("");
 				refresh[0].run();

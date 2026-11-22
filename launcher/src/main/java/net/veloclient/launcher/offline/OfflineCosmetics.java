@@ -70,6 +70,7 @@ public final class OfflineCosmetics {
 	 * allowed). Every other path (worlds, partners, stats, Discord, referral, rewards, Plus, ...) is not touched and
 	 * goes out exactly as before. Matching ignores the query/fragment, is case-insensitive for the store prefix, also
 	 * checks the dot-segment-normalized path, and needs a segment boundary ({@code /v1/storefront} is not the store).
+	 * Any path containing {@code //} is refused (no caller sends one).
 	 */
 	public static boolean blockedWhileUnlocked(String path) {
 		if (path == null) {
@@ -79,6 +80,9 @@ public final class OfflineCosmetics {
 		int cut = indexOfAny(raw, '?', '#');
 		if (cut >= 0) {
 			raw = raw.substring(0, cut);
+		}
+		if (raw.contains("//")) {
+			return true; // "//host/..." would parse as an authority and hide the real path - never let one out unlocked
 		}
 		String normalized;
 		try {
@@ -108,34 +112,101 @@ public final class OfflineCosmetics {
 
 	private static final java.util.Set<String> IMPORTING = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
+	/** Status line + refresh of the Store item page that started an equip (FX thread only). */
+	public record Feedback(java.util.function.Consumer<String> status, Runnable refresh) {
+		static final Feedback NONE = new Feedback(text -> { }, () -> { });
+	}
+
+	static final String DOWNLOADING = "Downloading this cloak's art...";
+	static final String IMPORT_EQUIPPED = "Cloak equipped - shows in your next game.";
+	static final String IMPORT_NOT_EQUIPPED = "Not equipped - the account or the offline cosmetics setting changed during the download.";
+	static final String IMPORT_FAILED = "Couldn't get this cloak's art - try again later.";
+
+	private static Feedback feedback;
+	private static boolean deferred;
+
+	/**
+	 * Runs a Store item page's equip action. Returns true when it started a background cloak import instead
+	 * (offline unlock), so the page shows the import's status rather than "equipped". FX thread only.
+	 */
+	public static boolean runEquip(Runnable equip, java.util.function.Consumer<String> status, Runnable refresh) {
+		feedback = new Feedback(status, refresh);
+		deferred = false;
+		try {
+			equip.run();
+			return deferred;
+		} finally {
+			feedback = null;
+			deferred = false;
+		}
+	}
+
+	/**
+	 * Whether a cloak imported for an offline-unlock click may be equipped now: the unlock is still on, it is the very
+	 * same account (dashless uuid) the click came from, and no Velo session token exists. Anything else - a Microsoft
+	 * account switched in, another offline account, the toggle turned off, a session token - and nothing is equipped.
+	 */
+	static boolean mayEquipAfterImport(String clickedAccount, boolean unlockedNow, String accountNow, String tokenNow) {
+		return clickedAccount != null && unlockedNow && clickedAccount.equals(accountNow) && tokenNow == null;
+	}
+
+	private static boolean stillSameOfflineAccount(String clickedAccount) {
+		return mayEquipAfterImport(clickedAccount, lockerUnlocked(), net.veloclient.launcher.data.VeloPaths.account(),
+				net.veloclient.launcher.social.LauncherSocial.sessionToken());
+	}
+
 	/**
 	 * Launcher Store page "Equip" on a cloak that isn't in the library yet (unlock on): imports that one cloak in the
 	 * background - bundled art, or the server-only GIF through the existing public {@code /v1/cosmetics/file/<sha>}
 	 * download ({@code StoreCatalog.openGif} -> {@code WingsCatalog.openFile}) - then equips it on the FX thread.
 	 * Same as {@code StorePurchase.restoreMissing} does for a bought cloak, for this single item.
+	 * <p>The account is captured at the click and re-checked ({@link #mayEquipAfterImport}) before the import and
+	 * again on the FX thread right before equipping; on a change nothing is equipped and nothing is left pending.
 	 */
-	public static void importAndEquipCape(net.veloclient.launcher.data.StoreItem item, java.util.function.Supplier<java.util.Optional<String>> libraryId,
-			Runnable done) {
+	public static void importAndEquipCape(net.veloclient.launcher.data.StoreItem item, java.util.function.Supplier<java.util.Optional<String>> libraryId) {
+		Feedback page = feedback == null ? Feedback.NONE : feedback;
+		String clickedAccount = net.veloclient.launcher.data.VeloPaths.account();
+		deferred = true;
+		if (!stillSameOfflineAccount(clickedAccount)) {
+			page.status().accept(IMPORT_NOT_EQUIPPED);
+			return;
+		}
+		page.status().accept(DOWNLOADING);
 		if (!IMPORTING.add(item.id())) {
 			return; // already on its way (a second click while the art downloads)
 		}
 		Thread.ofVirtual().name("velo-offline-cape-import").start(() -> {
+			boolean imported = false;
 			// Server-only art: download (or find cached) the exact file first - openGif would hand back a placeholder on failure.
 			boolean art = item.gifResourcePath() != null || net.veloclient.launcher.data.WingsCatalog.file(item.gifSha()) != null;
 			if (!art) {
 				net.veloclient.launcher.LauncherLog.info("Offline cosmetics: art for cloak " + item.id() + " isn't available - not imported");
+			} else if (!stillSameOfflineAccount(clickedAccount)) {
+				net.veloclient.launcher.LauncherLog.info("Offline cosmetics: account changed during the download - cloak " + item.id() + " not imported");
 			} else try (java.io.InputStream in = net.veloclient.launcher.data.StoreCatalog.openGif(item)) {
 				if (libraryId.get().isEmpty()) {
 					net.veloclient.launcher.data.CapeLibrary.importAnimatedGif(item.name(), in,
 							net.veloclient.launcher.data.CapePhysicsPresetData.defaults(), item.id());
 				}
+				imported = true;
 			} catch (Exception e) {
 				net.veloclient.launcher.LauncherLog.warn("Offline cosmetics: couldn't import cloak " + item.id(), e);
 			}
-			IMPORTING.remove(item.id());
+			boolean done = imported;
 			javafx.application.Platform.runLater(() -> {
-				libraryId.get().ifPresent(net.veloclient.launcher.data.CapeLibrary::equip);
-				done.run();
+				IMPORTING.remove(item.id());
+				String message;
+				if (!stillSameOfflineAccount(clickedAccount)) {
+					message = IMPORT_NOT_EQUIPPED; // checked on the FX thread, where account switches happen
+				} else if (!done) {
+					message = IMPORT_FAILED;
+				} else {
+					java.util.Optional<String> id = libraryId.get();
+					id.ifPresent(net.veloclient.launcher.data.CapeLibrary::equip);
+					message = id.isPresent() ? IMPORT_EQUIPPED : IMPORT_FAILED;
+				}
+				page.status().accept(message);
+				page.refresh().run();
 			});
 		});
 	}
