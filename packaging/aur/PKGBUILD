@@ -16,7 +16,7 @@ optdepends=('vulkan-icd-loader: Vulkan renderer on Minecraft 26.x'
 provides=('velo-client-launcher')
 conflicts=('velo-client-launcher')
 options=('!strip' '!debug')
-source=("velo-client-launcher-${pkgver}-linux-x64.tar.gz::https://github.com/velo345/velo-client/releases/download/v${pkgver}/velo-client-launcher-${pkgver}-linux-x64.tar.gz")
+source=("velo-client-launcher-${pkgver}-linux-x64.tar.gz::https://github.com/Shaan4854/velo-client/releases/download/v${pkgver}/velo-client-launcher-${pkgver}-linux-x64.tar.gz")
 sha256sums=('SKIP')
 
 package() {
