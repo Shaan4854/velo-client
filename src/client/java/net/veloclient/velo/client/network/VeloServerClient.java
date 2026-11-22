@@ -39,6 +39,14 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public final class VeloServerClient {
 
+	/** Same text as the 1.8.9 build's VeloNetwork for offline accounts. */
+	public static final String OFFLINE_ACCOUNT_MESSAGE = "Offline account - sign in with a Microsoft account to use Velo Network";
+
+	/** True for a real game started with an offline account (see {@link GameSessionReader#isOfflineSession()}). */
+	public static boolean isOfflineGameSession() {
+		return GameSessionReader.isOfflineSession();
+	}
+
 	/** Extra heartbeat fields from features outside the core (dev build: the pet you have out). */
 	public static final java.util.List<java.util.function.Consumer<JsonObject>> HEARTBEAT_EXTRAS = new java.util.concurrent.CopyOnWriteArrayList<>();
 	/** Called with the online list's users after each poll (dev build: other players' pets). */
@@ -278,6 +286,12 @@ public final class VeloServerClient {
 
 		if (gameAccount.isPresent() && tryAuthenticate(base, gameAccount.get())) {
 			nextAuthAttemptMillis = 0;
+			return;
+		}
+		if (gameAccount.isEmpty() && GameSessionReader.isOfflineSession()) {
+			// Offline game: never fall back to the launcher's saved (Microsoft) account - that would put its badge and
+			// cosmetics on a different player (e.g. after switching accounts in the launcher mid-game).
+			reportUnreachable(OFFLINE_ACCOUNT_MESSAGE, new IllegalStateException("offline account"));
 			return;
 		}
 		// The game's own token can expire in a very long session - the Velo

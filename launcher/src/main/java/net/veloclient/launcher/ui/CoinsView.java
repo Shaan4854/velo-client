@@ -107,7 +107,7 @@ public final class CoinsView {
 		}
 		VBox left = new VBox(28, heroCard, packsSection, waysToEarn());
 		HBox.setHgrow(left, Priority.ALWAYS);
-		VBox right = new VBox(12, section("Free every day", null, rewards == null ? note("Sign in to earn free coins.") : freeCoins(rewards, status, reload)));
+		VBox right = new VBox(12, section("Free every day", null, rewards == null ? note(net.veloclient.launcher.social.LauncherSocial.offlineAccount() ? "Free coins need a Microsoft account." : "Sign in to earn free coins.") : freeCoins(rewards, status, reload)));
 		right.setMinWidth(340);
 		right.setMaxWidth(380);
 		HBox columns = new HBox(28, left, right);

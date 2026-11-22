@@ -200,6 +200,10 @@ public final class SkinLibrary {
 
 	/** Uploads the skin to the signed-in Minecraft account (Mojang's API). */
 	public static void equip(Skin skin, String minecraftAccessToken, String uuid) throws IOException, InterruptedException {
+		if (minecraftAccessToken == null || minecraftAccessToken.isBlank()) {
+			// Offline accounts have no Mojang token: never send "Bearer null".
+			throw new IOException("Skins need a Microsoft account");
+		}
 		byte[] png = Files.readAllBytes(png(skin));
 		String boundary = "----velo" + UUID.randomUUID().toString().replace("-", "");
 		var body = new java.io.ByteArrayOutputStream();

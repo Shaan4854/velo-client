@@ -107,6 +107,8 @@ public final class LauncherSocial {
 	private static volatile java.util.function.UnaryOperator<MinecraftSession> tokenRefresher;
 	private static volatile State state;
 	private static volatile String status = "Not signed in";
+	/** Shown wherever Velo Network status appears while an offline account is active. */
+	public static final String OFFLINE_STATUS = "Offline account - Velo Network needs a Microsoft account";
 	private static volatile Thread worker;
 	private static volatile boolean running;
 	/** The launcher window is in front (focused, not minimised); see {@link #setWindowActive}. */
@@ -150,6 +152,12 @@ public final class LauncherSocial {
 
 	public static State snapshot() {
 		return state;
+	}
+
+	/** True while the active account is an offline (non-Microsoft) one. */
+	public static boolean offlineAccount() {
+		MinecraftSession current = session;
+		return current != null && current.isOffline();
 	}
 
 	public static String status() {
@@ -199,6 +207,14 @@ public final class LauncherSocial {
 		CONVERSATIONS.clear();
 		if (newSession == null) {
 			status = "Not signed in";
+			stopWorker();
+			publish(new Event("state", null, null, null, null));
+			return;
+		}
+		if (newSession.isOffline()) {
+			// Velo Network signs in through a Mojang session join, which an offline account can't do: no worker, no
+			// retries every 15 s, just a clear status.
+			status = OFFLINE_STATUS;
 			stopWorker();
 			publish(new Event("state", null, null, null, null));
 			return;
@@ -384,6 +400,9 @@ public final class LauncherSocial {
 		MinecraftSession current = session;
 		if (current == null) {
 			throw new IllegalStateException("not signed in");
+		}
+		if (current.isOffline()) {
+			throw new IllegalStateException("offline account");
 		}
 		// Launchers stay open for days (tray, PC asleep overnight): the 24 h Minecraft token runs out and the
 		// connection - and with it website/staff sign-in codes - used to stay dead until a restart.

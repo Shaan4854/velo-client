@@ -40,11 +40,24 @@ dependencies {
 	// format. Pure ImageIO SPI plugin, no extra runtime setup needed beyond
 	// being on the classpath.
 	implementation 'org.sejda.imageio:webp-imageio:0.1.6'
+
+	testImplementation platform('org.junit:junit-bom:5.11.4')
+	testImplementation 'org.junit.jupiter:junit-jupiter'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 test {
 	useJUnitPlatform()
+	// Launcher data paths derive from user.home: keep tests away from any real ~/.velo-client.
+	def testHome = layout.buildDirectory.dir("test-home").get().asFile
+	systemProperty "user.home", testHome.absolutePath
 }
+
+// Unit tests only need the compiled launcher classes, not its resources: main's resources come from
+// processResources -> bundleGameJars, which builds every Minecraft version of the mod. Keeping resources off the
+// test classpaths lets ":launcher:test" run in seconds. The release build (jar/run/jpackage) is unchanged.
+sourceSets.test.compileClasspath = files(sourceSets.main.output.classesDirs) + configurations.testCompileClasspath
+sourceSets.test.runtimeClasspath = files(sourceSets.test.output.classesDirs, sourceSets.main.output.classesDirs) + configurations.testRuntimeClasspath
 
 // Bundles each supported Minecraft version's built velo-client jar straight
 // into the launcher's own resources, so it's a fully self-contained app that
@@ -148,7 +161,7 @@ tasks.register("bundleJavaRuntimeFallback") {
 // hardcoded strings scattered across LauncherApp/GameLauncher. jpackageDist
 // below reuses the same value for the native installer's version.
 // -PlauncherVersion=1.2.4 (CI input) builds a test installer under another version, e.g. an update-test target.
-def launcherAppVersion = (project.findProperty("launcherVersion") ?: "1.4.2").toString()
+def launcherAppVersion = (project.findProperty("launcherVersion") ?: "1.4.3").toString()
 // A fixed identity for the Windows installer across every version - WiX
 // needs this (--win-upgrade-uuid below) to recognize a new installer as an
 // upgrade of whatever's already installed rather than an unrelated product,

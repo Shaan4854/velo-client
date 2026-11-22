@@ -45,8 +45,21 @@ public final class SkinFetcher {
 		}
 		Path cacheFile = VeloPaths.root().resolve("cache").resolve("skins").resolve(session.uuid() + ".png");
 		Path variantFile = VeloPaths.root().resolve("cache").resolve("skins").resolve(session.uuid() + ".variant");
+		if (session.isOffline()) {
+			// No Mojang profile and no token: never call the profile API. Show the default Steve/Alex skin.
+			SkinData fallback = DefaultSkins.forUuid(session.uuid());
+			if (fallback != null) {
+				net.veloclient.launcher.social.SkinHeads.update(session.uuid(), fallback.pngBytes());
+				return fallback;
+			}
+			return readCached(cacheFile, variantFile);
+		}
+		if (session.minecraftAccessToken() == null || session.minecraftAccessToken().isBlank()) {
+			// No token (e.g. an entry with an unknown type): never send "Bearer null".
+			return readCached(cacheFile, variantFile);
+		}
 		try {
-			Fetched fetched = fetchSkinInfo(session.minecraftAccessToken());
+			Fetched fetched = profileApi.fetch(session.minecraftAccessToken());
 			if (fetched == null) {
 				net.veloclient.launcher.social.SkinHeads.refresh(session.uuid());
 				return readCached(cacheFile, variantFile);
@@ -74,8 +87,15 @@ public final class SkinFetcher {
 		}
 	}
 
-	private record Fetched(String url, boolean slim) {
+	record Fetched(String url, boolean slim) {
 	}
+
+	/** The authenticated Mojang profile call - replaceable in tests to prove which accounts never reach it. */
+	interface ProfileApi {
+		Fetched fetch(String accessToken) throws Exception;
+	}
+
+	static volatile ProfileApi profileApi = SkinFetcher::fetchSkinInfo;
 
 	private static Fetched fetchSkinInfo(String accessToken) throws IOException, InterruptedException {
 		HttpRequest request = HttpRequest.newBuilder(URI.create(PROFILE_URL))

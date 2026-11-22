@@ -108,6 +108,12 @@ public final class FriendsView {
 					"Friends, messages and \"join friend\" use your Minecraft account.", "Sign In", host::signIn));
 			return;
 		}
+		if (host.session() != null && host.session().isOffline() && !LauncherSocial.isDemo()) {
+			root.getChildren().setAll(centered("Friends need a Microsoft account",
+					"You're playing with an offline account. Friends, messages and \"join friend\" use Velo Network, which needs a Microsoft account.",
+					"Add Microsoft account", host::signIn));
+			return;
+		}
 		LauncherSocial.State state = LauncherSocial.snapshot();
 		if (state == null) {
 			root.getChildren().setAll(centered("Connecting to Velo Network...", LauncherSocial.status(), null, null));

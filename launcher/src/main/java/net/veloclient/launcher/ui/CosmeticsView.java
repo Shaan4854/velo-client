@@ -481,7 +481,7 @@ public final class CosmeticsView {
 			if (extras != null && extras.get("pet") != null) {
 				net.veloclient.launcher.data.PetsSetting.equip(extras.get("pet").isEmpty() ? null : extras.get("pet"));
 			}
-			if (skin != null && !skin.equals(SkinLibrary.equippedId()) && host.session() != null) {
+			if (skin != null && !skin.equals(SkinLibrary.equippedId()) && host.session() != null && !host.session().isOffline()) {
 				SkinLibrary.Skin chosen = SkinLibrary.all().stream().filter(s -> s.id().equals(skin)).findFirst().orElse(null);
 				if (chosen != null) {
 					// Uploading to Mojang takes a moment (and can be refused for changing too often).
@@ -1940,6 +1940,10 @@ public final class CosmeticsView {
 					status.setText("Sign in first.");
 					return;
 				}
+				if (host.session().isOffline()) {
+					status.setText(SkinsSection.NEEDS_MICROSOFT);
+					return;
+				}
 				status.setText("Uploading " + chosen.name() + " to your Minecraft account...");
 				host.withFreshSession(fresh -> SkinsSection.run(() -> {
 					SkinLibrary.equip(chosen, fresh.minecraftAccessToken(), fresh.uuid());
@@ -1969,7 +1973,9 @@ public final class CosmeticsView {
 	private static final java.util.Set<String> SKIN_COPY_CHECKED = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
 	private static void autoCopyAccountSkin(MinecraftSession session, Runnable refresh) {
-		if (session == null || !SKIN_COPY_CHECKED.add(session.uuid())) {
+		// Offline accounts: their "skin" is the default Steve/Alex - never add it to the shared library, mark it worn or
+		// let it flow into the (Microsoft account's) loadouts.
+		if (session == null || session.isOffline() || !SKIN_COPY_CHECKED.add(session.uuid())) {
 			return;
 		}
 		Thread.ofVirtual().name("velo-skin-autocopy").start(() -> {
