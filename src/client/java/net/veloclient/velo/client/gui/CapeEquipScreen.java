@@ -1116,11 +1116,11 @@ public final class CapeEquipScreen extends VeloWindow implements net.veloclient.
 		}
 		int gridX = gridX();
 		// Heading over the collection: "Cloaks 12" + a quiet hint.
-		String name = aurasTab ? "Auras" : wingsTab ? "Wings" : wearTab ? "Bodywear" : "Cloaks"; // Bodywear: was mislabelled "Cloaks" (pre-existing)
+		String name = aurasTab ? "Auras" : wingsTab ? "Wings" : wearTab ? "Bodywear" : "Cloaks"; // upstream-fix: Bodywear was mislabelled "Cloaks" (pre-existing)
 		int count = aurasTab ? (int) net.veloclient.velo.client.cosmetics.aura.AuraManager.catalog().stream()
 				.filter(t -> net.veloclient.velo.client.cosmetics.aura.AuraManager.owns(t.id())).count()
 				: wingsTab ? net.veloclient.velo.client.cosmetics.wings.WingsManager.owned().size()
-				: wearTab ? (int) net.veloclient.velo.client.cosmetics.wear.WearManager.all().stream()
+				: wearTab ? (int) net.veloclient.velo.client.cosmetics.wear.WearManager.all().stream() // upstream-fix: Bodywear count
 						.filter(t -> net.veloclient.velo.client.cosmetics.wear.WearManager.owns(t.id())).count()
 				: net.veloclient.velo.client.offline.OfflineLockerCloaks.ownedCount(CapeManager.library().size()); // offline-cosmetics
 		Text heading = MenuKit.display(name);
