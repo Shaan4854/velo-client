@@ -1930,6 +1930,9 @@ public final class LauncherApp extends Application {
 		if (!christmasHome() || session == null || adventOpen || System.getProperty("velo.launcherTour") != null) {
 			return;
 		}
+		if (session.isOffline()) { // offline-cosmetics: no advent for offline accounts
+			return;
+		}
 		String account = session.uuid();
 		if (account == null || account.equals(adventCheckedFor)) {
 			return;
@@ -1948,7 +1951,7 @@ public final class LauncherApp extends Application {
 	}
 
 	private void showAdvent(boolean always) {
-		if (adventOpen) {
+		if (adventOpen || (session != null && session.isOffline())) { // offline-cosmetics: no advent for offline accounts
 			return;
 		}
 		adventOpen = true;
@@ -2179,7 +2182,7 @@ public final class LauncherApp extends Application {
 				? "-fx-background-color: linear-gradient(to right, rgba(5,8,22,0.9) 0%, rgba(5,8,22,0.62) 36%, transparent 62%);"
 				: "-fx-background-color: linear-gradient(to right, rgba(12,9,9,0.94) 0%, rgba(12,9,9,0.72) 36%, transparent 64%);");
 		hero.getChildren().add(fade);
-		if (christmasHome() && session != null) {
+		if (christmasHome() && session != null && !session.isOffline()) { // offline-cosmetics: no advent for offline accounts
 			hero.getChildren().add(adventButton());
 		}
 
