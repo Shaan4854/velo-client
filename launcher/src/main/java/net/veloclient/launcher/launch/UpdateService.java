@@ -260,7 +260,7 @@ public final class UpdateService {
 	}
 
 	/** The mod jars of {@code version} that differ from what this launcher would install today. */
-	private static Map<String, Asset> modJars(List<Asset> assets, String version) {
+	static Map<String, Asset> modJars(List<Asset> assets, String version) {
 		// Mod jars: a newer release always counts; the same version only when its jars were uploaded
 		// after this launcher bundled its own (a hotfix re-release) - and never twice for one upload.
 		Map<String, Asset> mods = new LinkedHashMap<>();
@@ -367,6 +367,9 @@ public final class UpdateService {
 		}
 		Properties props = new Properties();
 		props.setProperty("version", release.version());
+		// Which repository these jars came from: GameJars ignores a cache from another one (e.g. upstream jars an older
+		// launcher downloaded), so this fork's bundled mod is never overridden by them.
+		props.setProperty("repo", REPO);
 		StringBuilder ids = new StringBuilder(String.join(",", downloadedAssetIds()));
 		for (Asset asset : release.modAssets().values()) {
 			ids.append(ids.isEmpty() ? "" : ",").append(asset.id()).append(':').append(asset.updatedAt());
@@ -743,7 +746,8 @@ public final class UpdateService {
 		}
 		Asset installer = installerForVersion(AppVersion.VERSION);
 		if (installer == null) {
-			status.accept("Mods repaired. No launcher installer for this system in release " + AppVersion.VERSION + " - get it from velo-client.com.");
+			status.accept("Mods repaired. No launcher installer for this system in release " + AppVersion.VERSION
+					+ " - get it from github.com/" + REPO + "/releases.");
 			return false;
 		}
 		Path file = updatesDir().resolve(installer.name());

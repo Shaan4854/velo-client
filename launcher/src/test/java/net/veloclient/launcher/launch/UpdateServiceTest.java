@@ -170,4 +170,28 @@ class UpdateServiceTest {
 			System.setProperty("os.arch", arch);
 		}
 	}
+
+	// ---- mod jars: the fork's releases carry none ----
+
+	@Test
+	void forkReleaseWithoutJarsOffersNoModUpdate() throws Exception {
+		JsonObject picked = UpdateService.pickRelease(forkReleases(), false);
+		List<UpdateService.Asset> assets = assets(picked);
+		assertTrue(assets.stream().noneMatch(a -> a.name().endsWith(".jar")), "fixture should have no jars");
+		// AppVersion in unit tests is the fallback 0.5.3, so 1.4.3 counts as newer - the strictest case
+		assertTrue(UpdateService.modJars(assets, "1.4.3").isEmpty());
+		UpdateService.Release release = new UpdateService.Release("1.4.3", "", "", false, null, UpdateService.modJars(assets, "1.4.3"));
+		assertFalse(release.anything()); // "You're up to date", no popup, no download
+	}
+
+	@Test
+	void upstreamStyleJarNamesWouldBeMatched() {
+		// Control: the names the updater looks for are velo-client-<version>+<mc>.jar (e.g. upstream's v1.4.2 assets)
+		List<UpdateService.Asset> assets = List.of(
+				new UpdateService.Asset("velo-client-1.4.3+26.2.jar", UpdateService.GITHUB_DOWNLOADS + "v1.4.3/velo-client-1.4.3+26.2.jar", 10, null, 0, 1),
+				new UpdateService.Asset("velo-client-1.2.0+mc1.8.9.jar", "x", 10, null, 0, 2),
+				new UpdateService.Asset("velo-server.jar", "x", 10, null, 0, 3));
+		var mods = UpdateService.modJars(assets, "1.4.3");
+		assertEquals(List.of("26.2"), List.copyOf(mods.keySet()));
+	}
 }

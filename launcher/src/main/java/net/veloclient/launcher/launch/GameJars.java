@@ -130,17 +130,27 @@ public final class GameJars {
 		}
 	}
 
-	/** Downloaded jars from an older release than this launcher (it was updated since) are ignored. */
+	/**
+	 * Downloaded jars from an older release than this launcher (it was updated since) are ignored, and so are jars from
+	 * another repository than {@link UpdateService#REPO} (or from before the cache recorded one) - e.g. upstream
+	 * velo345 jars an older launcher fetched. Then the bundled jars are used.
+	 */
 	private static boolean cacheIsCurrent() {
 		Path props = UpdateService.gameJarsDir().resolve("cache.properties");
 		try (var reader = Files.newBufferedReader(props)) {
 			java.util.Properties p = new java.util.Properties();
 			p.load(reader);
-			String version = p.getProperty("version", "0");
-			return UpdateService.compare(version, net.veloclient.launcher.AppVersion.VERSION) >= 0;
+			return cacheIsCurrent(p, net.veloclient.launcher.AppVersion.VERSION);
 		} catch (IOException e) {
 			return false;
 		}
+	}
+
+	static boolean cacheIsCurrent(java.util.Properties cache, String appVersion) {
+		if (!UpdateService.REPO.equals(cache.getProperty("repo"))) {
+			return false;
+		}
+		return UpdateService.compare(cache.getProperty("version", "0"), appVersion) >= 0;
 	}
 
 	/** The Velo Client Addons are Velo+ only and come from the server - see {@link PlusAddons}. */
