@@ -52,7 +52,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class LocalPlayerSkinCapeMixin {
 
 	// 1.21.1: SkinTextures holds the texture identifiers directly (texture, url, cape, elytra, model, secure).
-	@Inject(method = "getSkinTextures", at = @At("RETURN"), cancellable = true)
+	// upstream-fix: no @Inject of its own - a cancellable RETURN inject that sets the value returns right away, so the cape
+	// override below never ran and Wavey Capes lost the Velo cloak whenever a skin was tried on/equipped locally.
+	// Now called first from velo$overrideCapeAndElytra instead.
 	private void velo$tryOnSkin(CallbackInfoReturnable<SkinTextures> cir) {
 		Identifier skin = net.veloclient.velo.client.skins.SkinTryOn.texture();
 		if (skin == null || (Object) this != MinecraftClient.getInstance().player) {
@@ -65,6 +67,7 @@ public abstract class LocalPlayerSkinCapeMixin {
 
 	@Inject(method = "getSkinTextures", at = @At("RETURN"), cancellable = true)
 	private void velo$overrideCapeAndElytra(CallbackInfoReturnable<SkinTextures> cir) {
+		velo$tryOnSkin(cir); // upstream-fix: try-on skin first, then the cape on top of it
 		java.util.Optional<CapeDefinition> equipped;
 		if ((Object) this == MinecraftClient.getInstance().player) {
 			equipped = CapeManager.renderCape();
@@ -100,8 +103,9 @@ public abstract class LocalPlayerSkinCapeMixin {
 @Mixin(AbstractClientPlayerEntity.class)
 public abstract class LocalPlayerSkinCapeMixin {
 
-	/** The Locker's Skin tab trying a skin on you (runs before the cape override below, which keeps the body). */
-	@Inject(method = "getSkin", at = @At("RETURN"), cancellable = true)
+	// upstream-fix: no @Inject of its own - a cancellable RETURN inject that sets the value returns right away, so the cape
+	// override below never ran and Wavey Capes lost the Velo cloak whenever a skin was tried on/equipped locally.
+	// Now called first from velo$overrideCapeAndElytra instead.
 	private void velo$tryOnSkin(CallbackInfoReturnable<SkinTextures> cir) {
 		Identifier skin = net.veloclient.velo.client.skins.SkinTryOn.texture();
 		if (skin == null || (Object) this != MinecraftClient.getInstance().player) {
@@ -115,6 +119,7 @@ public abstract class LocalPlayerSkinCapeMixin {
 
 	@Inject(method = "getSkin", at = @At("RETURN"), cancellable = true)
 	private void velo$overrideCapeAndElytra(CallbackInfoReturnable<SkinTextures> cir) {
+		velo$tryOnSkin(cir); // upstream-fix: try-on skin first, then the cape on top of it
 		java.util.Optional<CapeDefinition> equipped;
 		if ((Object) this == MinecraftClient.getInstance().player) {
 			equipped = CapeManager.renderCape();
@@ -169,7 +174,9 @@ public abstract class LocalPlayerSkinCapeMixin {
 /*@Mixin(AbstractClientPlayer.class)
 public abstract class LocalPlayerSkinCapeMixin {
 
-	@Inject(method = "getSkin", at = @At("RETURN"), cancellable = true)
+	// upstream-fix: no @Inject of its own - a cancellable RETURN inject that sets the value returns right away, so the cape
+	// override below never ran and Wavey Capes lost the Velo cloak whenever a skin was tried on/equipped locally.
+	// Now called first from velo$overrideCapeAndElytra instead.
 	private void velo$tryOnSkin(CallbackInfoReturnable<PlayerSkin> cir) {
 		Identifier skin = net.veloclient.velo.client.skins.SkinTryOn.texture();
 		if (skin == null || (Object) this != Minecraft.getInstance().player) {
@@ -183,6 +190,7 @@ public abstract class LocalPlayerSkinCapeMixin {
 
 	@Inject(method = "getSkin", at = @At("RETURN"), cancellable = true)
 	private void velo$overrideCapeAndElytra(CallbackInfoReturnable<PlayerSkin> cir) {
+		velo$tryOnSkin(cir); // upstream-fix: try-on skin first, then the cape on top of it
 		java.util.Optional<CapeDefinition> equipped;
 		if ((Object) this == Minecraft.getInstance().player) {
 			equipped = CapeManager.renderCape();
