@@ -59,6 +59,15 @@ test {
 sourceSets.test.compileClasspath = files(sourceSets.main.output.classesDirs) + configurations.testCompileClasspath
 sourceSets.test.runtimeClasspath = sourceSets.test.output + files(sourceSets.main.output.classesDirs) + configurations.testRuntimeClasspath
 
+// offline-cosmetics: the mod's pure gate helper (no Minecraft types) is unit-tested with the launcher's tests - the
+// mod has no test setup. Only that one file is copied in; nothing else of the mod is on the launcher's classpath.
+def offlineGateTestSrc = layout.buildDirectory.dir("generated/offline-gate-test-src")
+def copyOfflineGate = tasks.register("copyOfflineGate", Copy) {
+	from(rootProject.file("src/client/java")) { include "net/veloclient/velo/client/offline/OfflineGate.java" }
+	into offlineGateTestSrc
+}
+sourceSets.test.java.srcDir(files(offlineGateTestSrc).builtBy(copyOfflineGate))
+
 // Bundles each supported Minecraft version's built velo-client jar straight
 // into the launcher's own resources, so it's a fully self-contained app that
 // can always install the right jar into a profile's mods folder without

@@ -58,4 +58,13 @@ class OfflineCosmeticsGateTest {
 	void creditWording() {
 		assertEquals("Cosmetics art \u00a9 Velo Client, used with permission from founder Velo2k.", OfflineCosmetics.CREDIT);
 	}
+
+	@Test
+	void unlockedStoreAllowsOnlyThePublicCatalog() {
+		assertTrue(OfflineCosmetics.allowedWhileUnlocked("/v1/store/catalog"));
+		assertFalse(OfflineCosmetics.allowedWhileUnlocked("/v1/store/wallet"));
+		assertFalse(OfflineCosmetics.allowedWhileUnlocked("/v1/rewards"));
+		assertFalse(OfflineCosmetics.allowedWhileUnlocked("/v1/plus/status"));
+		assertFalse(OfflineCosmetics.allowedWhileUnlocked("/v1/store/catalog?x=1"));
+	}
 }
