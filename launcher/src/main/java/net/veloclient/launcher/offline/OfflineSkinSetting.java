@@ -18,6 +18,9 @@ import java.nio.file.StandardCopyOption;
 public final class OfflineSkinSetting {
 
 	public static final String FILE = "offline-skin.json";
+	static final String INVALID = "Can't equip this skin - it needs to be a 64x64 or 64x32 PNG up to 1 MB.";
+	static final long MAX_PNG_BYTES = 1024 * 1024;
+	private static final byte[] PNG_SIGNATURE = {(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
 
 	public record Choice(String skinId, boolean slim) {
 	}
@@ -37,6 +40,10 @@ public final class OfflineSkinSetting {
 
 	/** Skins > Equip for an offline account: saves the choice and returns the status line to show. */
 	public static String equip(net.veloclient.launcher.data.SkinLibrary.Skin skin) {
+		Path png = safePng(net.veloclient.launcher.data.SkinLibrary.dir(), skin.id());
+		if (png == null || !validPng(png)) {
+			return INVALID;
+		}
 		try {
 			write(file(), new Choice(skin.id(), skin.slim()));
 			return "Equipped locally - only you see it (offline account).";
@@ -69,5 +76,47 @@ public final class OfflineSkinSetting {
 		Path tmp = file.resolveSibling(FILE + ".tmp");
 		Files.writeString(tmp, new Gson().toJson(json), StandardCharsets.UTF_8);
 		Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+	}
+
+	/** {@code <dir>/<id>.png} for a skin library id (32 lowercase hex), or null when the id isn't one or leaves {@code dir}. */
+	static Path safePng(Path dir, String id) {
+		if (id == null || !id.matches("[0-9a-f]{32}")) {
+			return null;
+		}
+		Path base = dir.toAbsolutePath().normalize();
+		Path png = base.resolve(id + ".png").normalize();
+		return png.startsWith(base) ? png : null;
+	}
+
+	/** Same check as the game (OfflineSkin): a PNG of at most 1 MB whose header says 64x64 or 64x32. */
+	static boolean validPng(Path png) {
+		try {
+			if (png == null || !Files.isRegularFile(png) || Files.size(png) > MAX_PNG_BYTES) {
+				return false;
+			}
+			byte[] head = new byte[24];
+			try (java.io.InputStream in = Files.newInputStream(png)) {
+				if (in.readNBytes(head, 0, 24) != 24) {
+					return false;
+				}
+			}
+			for (int i = 0; i < PNG_SIGNATURE.length; i++) {
+				if (head[i] != PNG_SIGNATURE[i]) {
+					return false;
+				}
+			}
+			if (head[12] != 'I' || head[13] != 'H' || head[14] != 'D' || head[15] != 'R') {
+				return false;
+			}
+			int width = readInt(head, 16);
+			int height = readInt(head, 20);
+			return width == 64 && (height == 64 || height == 32);
+		} catch (IOException | RuntimeException e) {
+			return false;
+		}
+	}
+
+	private static int readInt(byte[] b, int at) {
+		return (b[at] & 0xFF) << 24 | (b[at + 1] & 0xFF) << 16 | (b[at + 2] & 0xFF) << 8 | (b[at + 3] & 0xFF);
 	}
 }

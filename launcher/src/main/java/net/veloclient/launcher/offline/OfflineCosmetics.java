@@ -57,7 +57,47 @@ public final class OfflineCosmetics {
 		javafx.scene.control.Label label = new javafx.scene.control.Label(CREDIT);
 		label.getStyleClass().add("t-muted");
 		label.setWrapText(true);
+		label.setMinHeight(javafx.scene.layout.Region.USE_PREF_SIZE);
 		return label;
+	}
+
+	/** Store GETs that may still run while the Locker is unlocked: only the public catalog (same as the game). */
+	public static boolean allowedWhileUnlocked(String path) {
+		return "/v1/store/catalog".equals(path);
+	}
+
+	private static final java.util.Set<String> IMPORTING = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+	/**
+	 * Launcher Store page "Equip" on a cloak that isn't in the library yet (unlock on): imports that one cloak in the
+	 * background - bundled art, or the server-only GIF through the existing public {@code /v1/cosmetics/file/<sha>}
+	 * download ({@code StoreCatalog.openGif} -> {@code WingsCatalog.openFile}) - then equips it on the FX thread.
+	 * Same as {@code StorePurchase.restoreMissing} does for a bought cloak, for this single item.
+	 */
+	public static void importAndEquipCape(net.veloclient.launcher.data.StoreItem item, java.util.function.Supplier<java.util.Optional<String>> libraryId,
+			Runnable done) {
+		if (!IMPORTING.add(item.id())) {
+			return; // already on its way (a second click while the art downloads)
+		}
+		Thread.ofVirtual().name("velo-offline-cape-import").start(() -> {
+			// Server-only art: download (or find cached) the exact file first - openGif would hand back a placeholder on failure.
+			boolean art = item.gifResourcePath() != null || net.veloclient.launcher.data.WingsCatalog.file(item.gifSha()) != null;
+			if (!art) {
+				net.veloclient.launcher.LauncherLog.info("Offline cosmetics: art for cloak " + item.id() + " isn't available - not imported");
+			} else try (java.io.InputStream in = net.veloclient.launcher.data.StoreCatalog.openGif(item)) {
+				if (libraryId.get().isEmpty()) {
+					net.veloclient.launcher.data.CapeLibrary.importAnimatedGif(item.name(), in,
+							net.veloclient.launcher.data.CapePhysicsPresetData.defaults(), item.id());
+				}
+			} catch (Exception e) {
+				net.veloclient.launcher.LauncherLog.warn("Offline cosmetics: couldn't import cloak " + item.id(), e);
+			}
+			IMPORTING.remove(item.id());
+			javafx.application.Platform.runLater(() -> {
+				libraryId.get().ifPresent(net.veloclient.launcher.data.CapeLibrary::equip);
+				done.run();
+			});
+		});
 	}
 
 	/** Settings row with the toggle (default off). */

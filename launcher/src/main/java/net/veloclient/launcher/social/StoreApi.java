@@ -747,7 +747,7 @@ public final class StoreApi {
 	}
 
 	private static JsonObject get(String path) throws StoreError {
-		if (net.veloclient.launcher.offline.OfflineCosmetics.lockerUnlocked() && path.equals("/v1/store/wallet")) throw new StoreError(0, "Offline account - nothing to load"); // offline-cosmetics
+		if (net.veloclient.launcher.offline.OfflineCosmetics.lockerUnlocked() && !net.veloclient.launcher.offline.OfflineCosmetics.allowedWhileUnlocked(path)) throw new StoreError(0, "Offline account - not available with the offline cosmetics unlock"); // offline-cosmetics
 		if (DEMO && path.startsWith("/v1/admin/") && System.getProperty("velo.adminToken") != null) {
 			// Dev-only tour against a test server (-Dvelo.serverUrl + -Dvelo.adminToken): real owner data.
 			return send(request(path).header("X-Velo-Admin-Token", System.getProperty("velo.adminToken")).GET().build());

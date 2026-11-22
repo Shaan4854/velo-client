@@ -80,7 +80,7 @@ public final class StoreItemDetailView {
 		ItemPage.Purchase purchase = new ItemPage.Purchase(item.id(), price,
 				() -> StoreOwnership.owns(item.id()),
 				() -> findLibraryIdFor(item).map(id -> id.equals(CapeLibrary.equippedCapeId().orElse(null))).orElse(false),
-				() -> findLibraryIdFor(item).ifPresent(CapeLibrary::equip),
+				() -> { if (findLibraryIdFor(item).isEmpty() && net.veloclient.launcher.offline.OfflineCosmetics.lockerUnlocked()) { net.veloclient.launcher.offline.OfflineCosmetics.importAndEquipCape(item, () -> findLibraryIdFor(item), () -> { }); return; } findLibraryIdFor(item).ifPresent(CapeLibrary::equip); }, // offline-cosmetics
 				CapeLibrary::unequip,
 				() -> StorePurchase.buy(item), "cape", item.inStore());
 		return ItemPage.build(host::goBack, host::openCoins, stage, null,
