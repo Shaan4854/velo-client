@@ -60,11 +60,30 @@ class OfflineCosmeticsGateTest {
 	}
 
 	@Test
-	void unlockedStoreAllowsOnlyThePublicCatalog() {
-		assertTrue(OfflineCosmetics.allowedWhileUnlocked("/v1/store/catalog"));
-		assertFalse(OfflineCosmetics.allowedWhileUnlocked("/v1/store/wallet"));
-		assertFalse(OfflineCosmetics.allowedWhileUnlocked("/v1/rewards"));
-		assertFalse(OfflineCosmetics.allowedWhileUnlocked("/v1/plus/status"));
-		assertFalse(OfflineCosmetics.allowedWhileUnlocked("/v1/store/catalog?x=1"));
+	void unlockedBlocksStoreOwnershipGets() {
+		for (String path : new String[] {"/v1/store/wallet", "/v1/store/owned", "/v1/store/order?id=abc", "/v1/store/code?c=VELO",
+				"/v1/store", "/v1/store/", "/v1/store?x=1", "/v1/store/catalog/", "/v1/store/catalog/extra", "/v1/store/catalogue",
+				"/v1/Store/wallet", "/v1/STORE/catalog", "/v1/store/catalog/../wallet", "/v1/plus/../store/wallet", "/v1/store/./wallet",
+				"/v1/store/wallet#x"}) {
+			assertTrue(OfflineCosmetics.blockedWhileUnlocked(path), path);
+		}
+	}
+
+	@Test
+	void unlockedAllowsTheCatalog() {
+		assertFalse(OfflineCosmetics.blockedWhileUnlocked("/v1/store/catalog"));
+		assertFalse(OfflineCosmetics.blockedWhileUnlocked("/v1/store/catalog?lang=en"));
+		assertFalse(OfflineCosmetics.blockedWhileUnlocked("/v1/store/catalog#top"));
+	}
+
+	@Test
+	void unlockedLeavesEveryNonStoreGetAlone() {
+		for (String path : new String[] {"/v1/worlds/public", "/v1/worlds/joinable", "/v1/partners", "/v1/stats/live",
+				"/v1/discord/status", "/v1/referral", "/v1/rewards", "/v1/plus/status", "/v1/plus/token", "/v1/plus/addons",
+				"/v1/staff/reports?status=open", "/v1/admin/partners", "/v1/admin/cosmetics", "/v1/storefront", "/v1/storefront/x",
+				"/v1/stores", "/v1/rewards?from=/v1/store/wallet"}) {
+			assertFalse(OfflineCosmetics.blockedWhileUnlocked(path), path);
+		}
+		assertFalse(OfflineCosmetics.blockedWhileUnlocked(null));
 	}
 }

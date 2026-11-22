@@ -61,9 +61,49 @@ public final class OfflineCosmetics {
 		return label;
 	}
 
-	/** Store GETs that may still run while the Locker is unlocked: only the public catalog (same as the game). */
-	public static boolean allowedWhileUnlocked(String path) {
-		return "/v1/store/catalog".equals(path);
+	private static final String STORE = "/v1/store";
+	private static final String CATALOG = "/v1/store/catalog";
+
+	/**
+	 * GETs refused while the Locker is unlocked: the store/ownership API - everything under {@code /v1/store/}
+	 * (wallet, order, partner code, ...) except exactly the public catalog ({@code /v1/store/catalog}, query string
+	 * allowed). Every other path (worlds, partners, stats, Discord, referral, rewards, Plus, ...) is not touched and
+	 * goes out exactly as before. Matching ignores the query/fragment, is case-insensitive for the store prefix, also
+	 * checks the dot-segment-normalized path, and needs a segment boundary ({@code /v1/storefront} is not the store).
+	 */
+	public static boolean blockedWhileUnlocked(String path) {
+		if (path == null) {
+			return false;
+		}
+		String raw = path;
+		int cut = indexOfAny(raw, '?', '#');
+		if (cut >= 0) {
+			raw = raw.substring(0, cut);
+		}
+		String normalized;
+		try {
+			normalized = java.net.URI.create(raw).normalize().getPath();
+		} catch (IllegalArgumentException e) {
+			return isStore(raw); // unparsable: decide on the raw path alone, never as the catalog
+		}
+		if (normalized == null) {
+			normalized = raw;
+		}
+		if (!isStore(raw) && !isStore(normalized)) {
+			return false;
+		}
+		return !(CATALOG.equals(raw) && CATALOG.equals(normalized));
+	}
+
+	private static boolean isStore(String path) {
+		String p = path.toLowerCase(java.util.Locale.ROOT);
+		return p.equals(STORE) || p.startsWith(STORE + "/");
+	}
+
+	private static int indexOfAny(String s, char a, char b) {
+		int i = s.indexOf(a);
+		int j = s.indexOf(b);
+		return i < 0 ? j : j < 0 ? i : Math.min(i, j);
 	}
 
 	private static final java.util.Set<String> IMPORTING = java.util.concurrent.ConcurrentHashMap.newKeySet();
