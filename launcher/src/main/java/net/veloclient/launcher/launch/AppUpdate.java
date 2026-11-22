@@ -37,6 +37,12 @@ public final class AppUpdate {
 
 	private static final String MANIFEST = "velo-launcher-app.json";
 	private static final long BOOT_TIMEOUT_MS = 90_000;
+	/**
+	 * Written into each unpacked version folder by {@link #install}: {@code repo=<UpdateService.REPO>}. hop() only starts
+	 * a version whose folder says it came from this fork - unmarked folders (older launchers, upstream velo345 builds)
+	 * and other repos stay on disk unused.
+	 */
+	static final String SOURCE = "velo-source.properties";
 
 	private AppUpdate() {
 	}
@@ -98,7 +104,7 @@ public final class AppUpdate {
 			while ((entry = in.getNextEntry()) != null) {
 				String name = entry.getName();
 				// flat folder only: no paths, nothing that could land outside the target
-				if (entry.isDirectory() || name.contains("/") || name.contains("\\") || name.contains("..")) {
+				if (entry.isDirectory() || name.contains("/") || name.contains("\\") || name.contains("..") || name.equals(SOURCE)) {
 					continue;
 				}
 				Path out = temp.resolve(name);
@@ -109,6 +115,7 @@ public final class AppUpdate {
 			}
 		}
 		check(temp, manifest, version);
+		writeSource(temp, version);
 		deleteTree(target);
 		Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE);
 		Files.deleteIfExists(root().resolve("failed-" + version));
@@ -189,6 +196,51 @@ public final class AppUpdate {
 		return null;
 	}
 
+	/** Marks an unpacked folder as downloaded from {@link UpdateService#REPO} (same marker as the mod-jar cache). */
+	static void writeSource(Path dir, String version) throws IOException {
+		java.util.Properties props = new java.util.Properties();
+		props.setProperty("repo", UpdateService.REPO);
+		props.setProperty("version", version);
+		try (var out = Files.newBufferedWriter(dir.resolve(SOURCE), StandardCharsets.UTF_8)) {
+			props.store(out, "Velo Client launcher app update source");
+		}
+	}
+
+	/** Whether an unpacked folder came from this fork's releases; unmarked, unreadable or other repos: no. */
+	static boolean trusted(Path dir) {
+		try (var in = Files.newBufferedReader(dir.resolve(SOURCE), StandardCharsets.UTF_8)) {
+			java.util.Properties props = new java.util.Properties();
+			props.load(in);
+			return UpdateService.REPO.equals(props.getProperty("repo"));
+		} catch (IOException | IllegalArgumentException e) {
+			return false;
+		}
+	}
+
+	enum Staged { NONE, NOT_NEWER, UNTRUSTED, READY }
+
+	record StagedVersion(Staged state, String version) {
+	}
+
+	/** What current.txt under {@code root} points at, relative to the running {@code installed} version. */
+	static StagedVersion staged(Path root, String installed) throws IOException {
+		Path pointer = root.resolve("current.txt");
+		if (!Files.isRegularFile(pointer)) {
+			return new StagedVersion(Staged.NONE, null);
+		}
+		String version = Files.readString(pointer, StandardCharsets.UTF_8).strip();
+		if (version.isEmpty()) {
+			return new StagedVersion(Staged.NONE, null);
+		}
+		if (UpdateService.compare(version, installed) <= 0) {
+			return new StagedVersion(Staged.NOT_NEWER, version);
+		}
+		if (!trusted(root.resolve(version))) {
+			return new StagedVersion(Staged.UNTRUSTED, version);
+		}
+		return new StagedVersion(Staged.READY, version);
+	}
+
 	private static void writeCurrent(String version) throws IOException {
 		Path tmp = root().resolve("current.txt.tmp");
 		Files.writeString(tmp, version, StandardCharsets.UTF_8);
@@ -209,14 +261,19 @@ public final class AppUpdate {
 			if (!supported() || System.getProperty("velo.appHop") != null) {
 				return false;
 			}
-			Path pointer = root().resolve("current.txt");
-			if (!Files.isRegularFile(pointer)) {
+			StagedVersion staged = staged(root(), AppVersion.VERSION);
+			if (staged.state() == Staged.NONE) {
 				return false;
 			}
-			String version = Files.readString(pointer, StandardCharsets.UTF_8).strip();
-			if (UpdateService.compare(version, AppVersion.VERSION) <= 0) {
+			String version = staged.version();
+			if (staged.state() == Staged.NOT_NEWER) {
 				// a fresh installer brought this or a newer version: the unpacked ones are old now
 				cleanUp(null);
+				return false;
+			}
+			if (staged.state() == Staged.UNTRUSTED) {
+				// not downloaded from this fork (e.g. an upstream update an older launcher unpacked): keep it, don't run it
+				UpdateService.log("App update " + version + " isn't from " + UpdateService.REPO + " - using the installed " + AppVersion.VERSION);
 				return false;
 			}
 			Path dir = root().resolve(version);
@@ -317,12 +374,16 @@ public final class AppUpdate {
 		}
 	}
 
-	/** Removes unpacked versions other than {@code keep} (and half-unpacked ones). */
+	/** Removes this fork's unpacked versions other than {@code keep} (and half-unpacked ones); others stay untouched. */
 	private static void cleanUp(String keep) {
-		try (var dirs = Files.list(root())) {
+		cleanUp(root(), keep);
+	}
+
+	static void cleanUp(Path root, String keep) {
+		try (var dirs = Files.list(root)) {
 			for (Path p : dirs.toList()) {
 				String name = p.getFileName().toString();
-				if (Files.isDirectory(p) && !name.equals(keep)) {
+				if (Files.isDirectory(p) && !name.equals(keep) && (name.endsWith(".unpacking") || trusted(p))) {
 					deleteTree(p);
 				}
 			}
