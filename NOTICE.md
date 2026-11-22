@@ -65,3 +65,11 @@ The HUD Style font choices `src/client/resources/assets/velo-client/font/space_g
 `ibm_plex_sans_semibold.ttf` ([IBM Plex Sans](https://github.com/IBM/plex) by IBM) are licensed under the
 [SIL Open Font License 1.1](https://openfontlicense.org/); the license texts sit next to the fonts
 (`OFL-SpaceGrotesk.txt`, `OFL-Poppins.txt`, `OFL-IBMPlexSans.txt`).
+
+## Velo cosmetic art
+
+Cosmetics art © Velo Client, used with permission from founder Velo2k.
+
+The cosmetic art (capes, wings, auras, bodywear, emotes, pets, kill effects) belongs to Velo Client. The offline-account
+cosmetics unlock only uses it locally, for personal use in your own game; it is not redistributed, and this build is
+not affiliated with the Velo Store. Art served by Velo's server is not part of this repository.

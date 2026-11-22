@@ -213,6 +213,23 @@ Offline accounts are saved in the same `config/account.json` with `"type": "OFFL
 treat an offline account as a Microsoft account with no sign-in tokens, so launching with it fails and Velo Network
 keeps reporting an expired sign-in. Remove offline accounts first if you need to go back to an older version.
 
+### Offline accounts: local cosmetics and credits
+
+Cosmetics art © Velo Client, used with permission from founder Velo2k.
+
+Launcher **Settings → Unlock cosmetics for offline accounts** (off by default). Only when it is on **and** you play
+with an offline account (Minecraft 1.21.1 – 26.3; not 1.8.9):
+
+- the launcher starts the game with `-Dvelo.offlineCosmetics=true`, and every Velo Store cosmetic (capes, wings, auras,
+  bodywear, emotes, pets, kill effects, name styles) can be equipped in the in-game Locker and in the launcher's Locker;
+- *Equip* in the launcher's Skins tab (or the in-game Locker) wears a PNG from your skin library locally instead of
+  uploading it to Mojang (`config/accounts/<uuid>/offline-skin.json`; 64x64 or 64x32 PNG, up to 1 MB).
+
+It is **local only**: nothing is bought, claimed or sent to the Velo server or Mojang, other players never see it, and
+Velo+ network features (Clips Pro, World Hosting, Cloud Sync) stay locked. The game also checks for itself that the
+session is offline and not signed in to Velo Network. Microsoft accounts are never affected. An offline game without
+the unlock shows "Skins need a Microsoft account" instead of trying a Mojang skin upload.
+
 ## Building
 
 Requires network access on first build (Gradle downloads Minecraft,
