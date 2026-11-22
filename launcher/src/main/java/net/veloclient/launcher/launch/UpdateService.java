@@ -29,8 +29,8 @@ import java.util.Properties;
 import java.util.function.Consumer;
 
 /**
- * In-launcher updates from the GitHub releases of {@code velo345/velo-client}, so nobody has to go
- * back to the website for a new build.
+ * In-launcher updates from the GitHub releases of {@code Shaan4854/velo-client} (this fork - see {@link #REPO}), so
+ * nobody has to go back to the website for a new build.
  *
  * <p>Two parts, both from the latest release:
  * <ul>
@@ -47,7 +47,21 @@ import java.util.function.Consumer;
  */
 public final class UpdateService {
 
-	private static final String RELEASES = "https://api.github.com/repos/velo345/velo-client/releases?per_page=15";
+	/**
+	 * The GitHub repository whose releases this launcher updates from. This fork (offline accounts) updates only from
+	 * its own releases: following upstream velo345/velo-client would install upstream builds over it and drop
+	 * offline accounts.
+	 */
+	static final String REPO = "Shaan4854/velo-client";
+	static final String RELEASES = "https://api.github.com/repos/" + REPO + "/releases?per_page=15";
+	/** One release by tag, for Repair: {@code RELEASE_BY_TAG + "v" + version}. */
+	static final String RELEASE_BY_TAG = "https://api.github.com/repos/" + REPO + "/releases/tags/";
+	/**
+	 * Whether velo-client.com's download mirror (below) may be used. Off for this fork: that mirror carries upstream's
+	 * releases only, so falling back to it would offer upstream builds (and a same-named download there could be a
+	 * different build). Update checks and downloads go to GitHub only.
+	 */
+	static final boolean USE_VELO_MIRROR = false;
 	/**
 	 * Velo's own copy of the releases (tools/release/mirror_release.sh): the same JSON as GitHub's release list with every
 	 * download pointing at velo-client.com/dl/v&lt;version&gt;/&lt;file&gt;. Used when GitHub doesn't answer - its release downloads
@@ -55,7 +69,7 @@ public final class UpdateService {
 	 */
 	static final String MIRROR = "https://velo-client.com/dl/";
 	private static final String MIRROR_RELEASES = MIRROR + "releases.json";
-	private static final String GITHUB_DOWNLOADS = "https://github.com/velo345/velo-client/releases/download/";
+	static final String GITHUB_DOWNLOADS = "https://github.com/" + REPO + "/releases/download/";
 	private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
 			.followRedirects(HttpClient.Redirect.NORMAL).build();
 
@@ -138,6 +152,9 @@ public final class UpdateService {
 
 	/** The Velo server's copy of a GitHub release download, or null for any other URL. */
 	static String mirrorUrl(String url) {
+		if (!USE_VELO_MIRROR) {
+			return null;
+		}
 		return url != null && url.startsWith(GITHUB_DOWNLOADS) ? MIRROR + url.substring(GITHUB_DOWNLOADS.length()) : null;
 	}
 
@@ -147,27 +164,14 @@ public final class UpdateService {
 		try {
 			body = githubReleases();
 		} catch (IOException e) {
+			if (!USE_VELO_MIRROR) {
+				log("GitHub unreachable for the update check (" + e.getMessage() + ") - trying again later");
+				throw e;
+			}
 			log("GitHub unreachable for the update check (" + e.getMessage() + ") - asking the Velo server");
 			body = mirrorReleases();
 		}
-		// Releases are published as pre-releases, so /releases/latest doesn't see them: take the
-		// highest version among the recent non-draft releases instead.
-		JsonObject json = null;
-		for (JsonElement element : JsonParser.parseString(body).getAsJsonArray()) {
-			JsonObject candidate = element.getAsJsonObject();
-			if (candidate.get("draft").getAsBoolean()) {
-				continue;
-			}
-			// Update-test releases ("updatetest-1.2.4") exist only for testers on the test channel; everyone else skips
-			// them (older launchers read such a tag as version 0.1.2.4, below any real release, so they skip it too).
-			boolean testRelease = candidate.get("tag_name").getAsString().startsWith(TEST_TAG);
-			if (testRelease != testChannel) {
-				continue;
-			}
-			if (json == null || compare(tag(candidate), tag(json)) > 0) {
-				json = candidate;
-			}
-		}
+		JsonObject json = pickRelease(JsonParser.parseString(body).getAsJsonArray(), testChannel);
 		if (json == null) {
 			throw new IOException("No releases published yet");
 		}
@@ -191,7 +195,7 @@ public final class UpdateService {
 					updated, a.has("id") ? a.get("id").getAsLong() : 0));
 		}
 
-		boolean launcherNewer = compare(version, AppVersion.VERSION) > 0;
+		boolean launcherNewer = offersLauncher(version, AppVersion.VERSION);
 		Asset installer = null;
 		if (!packaged()) {
 			// From the source tree: nothing to install over (git pull instead) - only the mod jars below.
@@ -204,9 +208,7 @@ public final class UpdateService {
 		// macOS: one disk image per CPU (...-macos-arm64.dmg for Apple Silicon, ...-macos-x64.dmg for Intel).
 		String macDmg = os.contains("mac") ? "-macos-" + macArch() + ".dmg" : null;
 		for (Asset asset : assets) {
-			if (os.contains("win") && asset.name().endsWith(".exe")
-					|| debian && asset.name().endsWith(".deb")
-					|| macDmg != null && asset.name().endsWith(macDmg)) {
+			if (isInstaller(asset.name(), os, debian, macDmg)) {
 				installer = asset;
 			}
 		}
@@ -218,6 +220,43 @@ public final class UpdateService {
 		// the installer-free update (AppUpdate) when this release has it for this platform
 		Asset appZip = AppUpdate.supported() ? AppUpdate.pick(assets, version) : null;
 		return new Release(version, notes, page, launcherNewer, installer, mods, appZip);
+	}
+
+	/**
+	 * The release to offer from GitHub's release list: the highest version among non-draft releases. Pre-releases and
+	 * normal releases count alike (upstream published pre-releases, which /releases/latest doesn't return; this fork
+	 * publishes normal ones). Update-test releases ("updatetest-1.2.4") exist only for testers on the test channel;
+	 * everyone else skips them (older launchers read such a tag as version 0.1.2.4, below any real release). Null when
+	 * there is none.
+	 */
+	static JsonObject pickRelease(JsonArray releases, boolean testChannel) {
+		JsonObject json = null;
+		for (JsonElement element : releases) {
+			JsonObject candidate = element.getAsJsonObject();
+			if (candidate.has("draft") && candidate.get("draft").getAsBoolean()) {
+				continue;
+			}
+			boolean testRelease = candidate.get("tag_name").getAsString().startsWith(TEST_TAG);
+			if (testRelease != testChannel) {
+				continue;
+			}
+			if (json == null || compare(tag(candidate), tag(json)) > 0) {
+				json = candidate;
+			}
+		}
+		return json;
+	}
+
+	/** Whether a release of {@code releaseVersion} is a launcher update for {@code current} (strictly newer only). */
+	static boolean offersLauncher(String releaseVersion, String current) {
+		return compare(releaseVersion, current) > 0;
+	}
+
+	/** Whether a release asset is the installer for this system: .exe on Windows, .deb where dpkg/apt exist, the arch's .dmg. */
+	static boolean isInstaller(String name, String os, boolean debian, String macDmgSuffix) {
+		return os.contains("win") && name.endsWith(".exe")
+				|| debian && name.endsWith(".deb")
+				|| macDmgSuffix != null && name.endsWith(macDmgSuffix);
 	}
 
 	/** The mod jars of {@code version} that differ from what this launcher would install today. */
@@ -269,7 +308,7 @@ public final class UpdateService {
 		return ids;
 	}
 
-	private static String tag(JsonObject release) {
+	static String tag(JsonObject release) {
 		return release.get("tag_name").getAsString().replaceFirst("^v", "").replaceFirst("^" + TEST_TAG, "");
 	}
 
@@ -747,7 +786,7 @@ public final class UpdateService {
 
 	/** This OS's installer in the release tagged {@code v<version>}, or null. */
 	private static Asset installerForVersion(String version) throws IOException, InterruptedException {
-		HttpRequest request = HttpRequest.newBuilder(URI.create("https://api.github.com/repos/velo345/velo-client/releases/tags/v" + version))
+		HttpRequest request = HttpRequest.newBuilder(URI.create(RELEASE_BY_TAG + "v" + version))
 				.timeout(Duration.ofSeconds(15)).header("Accept", "application/vnd.github+json")
 				.header("User-Agent", "VeloClientLauncher/" + AppVersion.VERSION).GET().build();
 		JsonObject release = null;
@@ -760,6 +799,10 @@ public final class UpdateService {
 			}
 		} catch (IOException e) {
 			log("Repair: GitHub unreachable (" + e.getMessage() + ")");
+		}
+		if (release == null && !USE_VELO_MIRROR) {
+			log("Repair: release v" + version + " not found on GitHub");
+			return null;
 		}
 		if (release == null) {
 			for (JsonElement element : JsonParser.parseString(mirrorReleases()).getAsJsonArray()) {
@@ -778,7 +821,7 @@ public final class UpdateService {
 		for (JsonElement element : release.getAsJsonArray("assets")) {
 			JsonObject a = element.getAsJsonObject();
 			String name = a.get("name").getAsString();
-			if (os.contains("win") && name.endsWith(".exe") || debian && name.endsWith(".deb") || macDmg != null && name.endsWith(macDmg)) {
+			if (isInstaller(name, os, debian, macDmg)) {
 				String digest = a.has("digest") && !a.get("digest").isJsonNull() ? a.get("digest").getAsString() : null;
 				return new Asset(name, a.get("browser_download_url").getAsString(), a.get("size").getAsLong(),
 						digest != null && digest.startsWith("sha256:") ? digest.substring(7) : null, 0, a.get("id").getAsLong());
