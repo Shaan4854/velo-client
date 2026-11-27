@@ -59,6 +59,9 @@ public final class MenuKit {
 	public static int accentOverride = -1;
 
 	public static int accent() {
+		if (net.veloclient.velo.client.gui.widget.VeloStyle.glass()) {
+			return net.veloclient.velo.client.gui.glass.GlassPrefs.accent();   // glass: the accent from Settings > Theme (white by default)
+		}
 		return accentOverride >= 0 ? accentOverride | 0xFF000000 : ThemeManager.active().accentStart() | 0xFF000000;
 	}
 
@@ -68,6 +71,9 @@ public final class MenuKit {
 	}
 
 	public static int onAccent() {
+		if (net.veloclient.velo.client.gui.widget.VeloStyle.glass()) {
+			return net.veloclient.velo.client.gui.glass.GlassPrefs.onAccent();
+		}
 		return ThemeManager.active().onAccent();
 	}
 
@@ -97,6 +103,16 @@ public final class MenuKit {
 
 	public static Text mono(String s) {
 		return font(s, MONO);
+	}
+
+	/** Window titles: Geist SemiBold, a size up (crisp per GUI scale). */
+	public static Text title13(String s) {
+		return font(s, Identifier.of("velo-client", "menu_title"));
+	}
+
+	/** {@code s} in any Velo font by its id path (e.g. {@code dr_r_5}). */
+	public static Text inFont(String s, String fontPath) {
+		return font(s, Identifier.of("velo-client", fontPath));
 	}
 
 	public static Text ui(String s) {
@@ -224,7 +240,27 @@ public final class MenuKit {
 	}
 
 	/** A glass card: soft shadow, dark translucent fill, hairline edge. */
+	/** When set (the pause menu, while it draws), every panel's rect is collected here - the blur goes behind them. */
+	public static java.util.List<int[]> panelSink;
+	/** The pause menu's slide-in offset while it draws a column: the blur behind a panel follows the panel (VELO-183). */
+	public static int sinkOffsetX;
+
 	public static void panel(DrawContext context, int x, int y, int w, int h, int radius) {
+		if (panelSink != null) {
+			boolean g = net.veloclient.velo.client.gui.widget.VeloStyle.glass();
+			panelSink.add(new int[] {x + sinkOffsetX, y, w, h, g ? Math.round(net.veloclient.velo.client.gui.glass.GlassPrefs.radius(radius)) : radius});
+		}
+		if (net.veloclient.velo.client.gui.widget.VeloStyle.glass()) {
+			// the glass of the menus: no drop shadow (it showed through), light edge, light along the top
+			float r = net.veloclient.velo.client.gui.glass.GlassPrefs.radius(radius);
+			VeloDraw.fillRounded(context, x, y, w, h, r, net.veloclient.velo.client.gui.glass.GlassPrefs.tint(0xA6141418));
+			VeloDraw.strokeRounded(context, x, y, w, h, r, 1f, 0x26FFFFFF);
+			int ri = Math.round(r);
+			if (w > ri * 2) {
+				context.fill(x + ri, y, x + w - ri, y + 1, 0x33FFFFFF);
+			}
+			return;
+		}
 		VeloDraw.shadow(context, x, y, w, h, radius, 14, 4, 0x55000000);
 		VeloDraw.fillRounded(context, x, y, w, h, radius, PANEL);
 		VeloDraw.strokeRounded(context, x, y, w, h, radius, HAIRLINE);
@@ -232,7 +268,7 @@ public final class MenuKit {
 
 	/** An inner tile on a panel. */
 	public static void tile(DrawContext context, int x, int y, int w, int h, int radius) {
-		VeloDraw.fillRounded(context, x, y, w, h, radius, SURFACE_2);
+		VeloDraw.fillRounded(context, x, y, w, h, radius, net.veloclient.velo.client.gui.widget.VeloStyle.glassOr(SURFACE_2, 0x14FFFFFF));
 	}
 
 	public static void hairline(DrawContext context, int x, int y, int w) {
@@ -243,10 +279,13 @@ public final class MenuKit {
 	public static void toggle(DrawContext context, int x, int y, float progress) {
 		int w = 16;
 		int h = 9;
-		int track = VeloAnim.lerpArgb(0xFF3A3A42, accent(), progress);
+		boolean glass = net.veloclient.velo.client.gui.widget.VeloStyle.glass();
+		int track = VeloAnim.lerpArgb(glass ? 0x40FFFFFF : 0xFF3A3A42, accent(), progress);
 		VeloDraw.fillRounded(context, x, y, w, h, h / 2, track);
 		float knobX = x + 1 + (w - h) * progress;
-		VeloDraw.fillCircle(context, knobX + (h - 2) / 2f, y + h / 2f, (h - 2) / 2f, 0xFFFFFFFF);
+		// glass: the track turns white when on, so the knob turns dark (white on white vanished)
+		int knob = glass ? VeloAnim.lerpArgb(0xFFFFFFFF, net.veloclient.velo.client.gui.glass.GlassPrefs.onAccent(), progress) : 0xFFFFFFFF;
+		VeloDraw.fillCircle(context, knobX + (h - 2) / 2f, y + h / 2f, (h - 2) / 2f, knob);
 	}
 
 	/** A keyboard key hint ("ESC", "R-SHIFT") in mono, right-aligned at {@code right}. */
@@ -266,7 +305,12 @@ public final class MenuKit {
 	public static float hover(Object key, boolean hovered) {
 		// [0] the fade, [1] the last frame in nanoseconds. A double on purpose: as milliseconds-since-boot in a float the
 		// time only moved in 16 ms steps after a couple of days of uptime, and every hover fade stuttered.
-		double[] state = HOVER.computeIfAbsent(key, k -> new double[] {0, 0});
+		double[] state = HOVER.computeIfAbsent(key, k -> new double[] {0, 0, 0});
+		// [2] was it hovered last frame - a new hover plays the soft hover sound (2026-11-25)
+		if (hovered && state[2] == 0) {
+			net.veloclient.velo.client.sound.VeloUiSounds.hoverSoft();
+		}
+		state[2] = hovered ? 1 : 0;
 		long now = System.nanoTime();
 		float dt = state[1] == 0 ? 0f : (float) Math.min(0.1, (now - state[1]) / 1e9);
 		state[1] = now;

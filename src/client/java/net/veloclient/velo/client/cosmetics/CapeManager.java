@@ -80,6 +80,24 @@ public final class CapeManager {
 		equippedCapeId = state.equippedCapeId();
 	}
 
+	/**
+	 * Picks up bundles another process (the launcher) wrote since the library was loaded; true when one of them is the
+	 * Store item {@code itemId}. Checked before a Store restore imports anything - the launcher and the game both
+	 * restored a freshly granted cloak and it showed up twice (1.5.1.1).
+	 */
+	public static synchronized boolean adoptFromDisk(String itemId) {
+		java.util.Set<Path> known = new java.util.HashSet<>();
+		LIBRARY.values().forEach(def -> known.add(def.bundleFile()));
+		try (var files = Files.list(VeloPaths.capes())) {
+			for (Path file : files.filter(p -> p.toString().endsWith(".velocape") && !known.contains(p)).toList()) {
+				readBundleMetadata(file).ifPresent(def -> LIBRARY.put(def.id(), def));
+			}
+		} catch (IOException ignored) {
+			// nothing new
+		}
+		return LIBRARY.values().stream().anyMatch(def -> java.util.Objects.equals(def.sourceItemId(), itemId));
+	}
+
 	public static synchronized void loadLibrary() {
 		if (loaded) {
 			return;
@@ -104,10 +122,25 @@ public final class CapeManager {
 	 */
 	public static Map<String, CapeDefinition> library() {
 		Map<String, CapeDefinition> usable = new LinkedHashMap<>();
+		// one per Store item (an older double import stays on disk - another account may wear it - but isn't listed);
+		// the worn copy wins
+		Map<String, String> itemToId = new java.util.HashMap<>();
 		LIBRARY.forEach((id, def) -> {
-			if (usable(def)) {
-				usable.put(id, def);
+			if (!usable(def)) {
+				return;
 			}
+			String item = def.sourceItemId();
+			if (item != null && !item.isBlank()) {
+				String kept = itemToId.get(item);
+				if (kept != null) {
+					if (!id.equals(equippedCapeId)) {
+						return;
+					}
+					usable.remove(kept);
+				}
+				itemToId.put(item, id);
+			}
+			usable.put(id, def);
 		});
 		return java.util.Collections.unmodifiableMap(usable);
 	}
@@ -569,6 +602,89 @@ public final class CapeManager {
 		return null;
 	}
 
+	private static final java.util.Map<String, Identifier> STILLS = new java.util.concurrent.ConcurrentHashMap<>();
+	private static final java.util.Set<String> STILL_LOADING = java.util.concurrent.ConcurrentHashMap.newKeySet();
+	private static final java.util.concurrent.ExecutorService STILL_LOADER = java.util.concurrent.Executors.newFixedThreadPool(2, r -> {
+		Thread thread = new Thread(r, "Velo cloak stills");
+		thread.setDaemon(true);
+		return thread;
+	});
+
+	/**
+	 * A still picture (first frame) of an animated cloak for the Locker's tiles (2026-11-25, like the launcher): decoding
+	 * only the first frame - and keeping it as a small PNG on disk - instead of every frame of every cloak, so the grid fills
+	 * in right away. The full animation is only decoded for the tile under the mouse and the worn/selected one. Static
+	 * cloaks just use their texture. Render thread; null until ready.
+	 */
+	public static Identifier stillIfReady(CapeDefinition definition) {
+		if (!definition.animated()) {
+			return textureIfReady(definition);
+		}
+		AnimatedCapeAsset full = AnimatedCapeAsset.existing(definition.id());
+		if (full != null) {
+			return full.identifier();
+		}
+		Identifier still = STILLS.get(definition.id());
+		if (still != null) {
+			return still;
+		}
+		if (STILL_LOADING.add(definition.id())) {
+			STILL_LOADER.submit(() -> {
+				try {
+					Path source = definition.bundleFile();
+					String key = source != null && Files.isRegularFile(source)
+							? Long.toHexString(Files.getLastModifiedTime(source).toMillis() ^ Files.size(source)) : "store";
+					Path cacheFile = net.veloclient.velo.config.VeloPaths.root().resolve("cache").resolve("game-cloak-stills")
+							.resolve(definition.id().replaceAll("[^a-zA-Z0-9_.-]", "_") + "-" + key + ".png");
+					byte[] png;
+					if (Files.isRegularFile(cacheFile)) {
+						png = Files.readAllBytes(cacheFile);
+					} else {
+						java.awt.image.BufferedImage first;
+						try (InputStream in = openAnimatedSource(definition)) {
+							first = GifDecoder.firstFrame(in);
+						}
+						java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+						javax.imageio.ImageIO.write(first, "png", out);
+						png = out.toByteArray();
+						Files.createDirectories(cacheFile.getParent());
+						Files.write(cacheFile, png);
+					}
+					NativeImage image = NativeImage.read(new java.io.ByteArrayInputStream(png));
+					MinecraftClient.getInstance().execute(() -> {
+						Identifier id = Identifier.of("velo-client", "cloak_still_" + definition.id().toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9_.-]", "_"));
+						noteTextureSize(id, image.getWidth(), image.getHeight());
+						MinecraftClient.getInstance().getTextureManager().registerTexture(id, new NativeImageBackedTexture(() -> definition.name(), image));
+						STILLS.put(definition.id(), id);
+					});
+				} catch (Throwable t) {
+					// no still: the tile falls back to the full animation
+					STILL_LOADING.remove(definition.id());
+					MinecraftClient.getInstance().execute(() -> STILLS.putIfAbsent(definition.id(), FALLBACK_TO_FULL));
+				}
+			});
+		}
+		return null;
+	}
+
+	/** Marker: no still could be made, use the animated texture. */
+	private static final Identifier FALLBACK_TO_FULL = Identifier.of("velo-client", "cloak_still_none");
+
+	/** For the Locker tiles: the still, or (hovered, worn, picked - or no still possible) the full animation. */
+	public static Identifier tileTexture(CapeDefinition definition, boolean animate) {
+		if (!definition.animated() || animate) {
+			Identifier full = textureIfReady(definition);
+			if (full != null || !definition.animated()) {
+				return full;
+			}
+		}
+		Identifier still = stillIfReady(definition);
+		if (still == FALLBACK_TO_FULL) {
+			return textureIfReady(definition);
+		}
+		return still;
+	}
+
 	private static NativeImage readBundleImage(CapeDefinition definition, String entryName) throws IOException {
 		try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(definition.bundleFile()))) {
 			ZipEntry entry;
@@ -750,20 +866,28 @@ public final class CapeManager {
 		CapePhysicsPreset preset = CapePhysicsPreset.defaults();
 		boolean hasElytra = false;
 		boolean animated = false;
-		try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(bundleFile))) {
-			ZipEntry entry;
-			while ((entry = zip.getNextEntry()) != null) {
-				if (entry.getName().equals("meta.json")) {
-					meta = GSON.fromJson(new java.io.InputStreamReader(zip, StandardCharsets.UTF_8), Meta.class);
-				} else if (entry.getName().equals("physics.json")) {
-					preset = GSON.fromJson(new java.io.InputStreamReader(zip, StandardCharsets.UTF_8), CapePhysicsPreset.class);
-				} else if (entry.getName().equals("elytra.png")) {
-					hasElytra = true;
-				} else if (entry.getName().equals("frames.gif")) {
-					animated = true;
+		// The zip's directory, not a stream: frames.gif comes first in Store bundles (up to 9 MB), and streaming inflated
+		// every whole GIF just to reach meta.json - 54 cloaks = 228 MB unpacked on the render thread at every start
+		// (profiled 2026-11-24). Only the two small JSON files are read now.
+		try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(bundleFile.toFile())) {
+			ZipEntry metaEntry = zip.getEntry("meta.json");
+			if (metaEntry != null) {
+				try (var in = new java.io.InputStreamReader(zip.getInputStream(metaEntry), StandardCharsets.UTF_8)) {
+					meta = GSON.fromJson(in, Meta.class);
 				}
 			}
-		} catch (IOException e) {
+			ZipEntry physicsEntry = zip.getEntry("physics.json");
+			if (physicsEntry != null) {
+				try (var in = new java.io.InputStreamReader(zip.getInputStream(physicsEntry), StandardCharsets.UTF_8)) {
+					CapePhysicsPreset read = GSON.fromJson(in, CapePhysicsPreset.class);
+					if (read != null) {
+						preset = read;
+					}
+				}
+			}
+			hasElytra = zip.getEntry("elytra.png") != null;
+			animated = zip.getEntry("frames.gif") != null;
+		} catch (IOException | RuntimeException e) {
 			return Optional.empty();
 		}
 		if (meta == null) {

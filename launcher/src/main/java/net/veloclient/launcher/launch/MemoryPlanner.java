@@ -127,7 +127,10 @@ public final class MemoryPlanner {
 				yield roomy ? Gc.ZGC : Gc.G1;
 			}
 		};
-		int minMb = Math.min(maxMb, Math.max(1024, Math.min(2048, maxMb / 3)));
+		// Small on purpose: G1 never gives memory back below -Xms, and the start-up peak (~2.2 GB committed) stayed in use
+		// for the whole session. With 512 MB the game trims back to what it really uses (~0.5 GB heap) once it's loaded -
+		// measured 2026-11-24 on a 137-mod profile: 2.46 GB -> 1.48 GB resident at the title screen, start-up time the same.
+		int minMb = Math.min(maxMb, 512);
 		return new Plan(maxMb, minMb, gc, automatic, reasons, warning);
 	}
 
@@ -259,6 +262,10 @@ public final class MemoryPlanner {
 		List<String> args = new ArrayList<>();
 		args.add("-Xmx" + plan.maxMb() + "m");
 		args.add("-Xms" + plan.minMb() + "m");
+		// Start-up: the metaspace high-water mark starts at ~21 MB and only grows by collecting - with 130+ mods that was
+		// three full-heap "Metadata GC Threshold" collections while the game loads (~0.4 s of stop-the-world, profiled
+		// 2026-11-24; the game ends start-up at ~75 MB). Only a threshold, nothing is reserved or touched up front.
+		args.add("-XX:MetaspaceSize=192m");
 		if (plan.gc() == Gc.ZGC && javaFeature >= 15) {
 			// Generational ZGC: pauses well under a millisecond regardless of heap size, and it
 			// returns unused memory (ZUncommit, on by default). SoftMaxHeapSize keeps it aiming lower
@@ -291,6 +298,9 @@ public final class MemoryPlanner {
 			}
 			args.add("-XX:MinHeapFreeRatio=10");
 			args.add("-XX:MaxHeapFreeRatio=30");
+			// Velo asks for one collection when the game sits idle in a menu (MemoryTrim): concurrent, so it never pauses
+			// the game - and G1 hands the unused heap back to the system at its end.
+			args.add("-XX:+ExplicitGCInvokesConcurrent");
 		}
 		return args;
 	}

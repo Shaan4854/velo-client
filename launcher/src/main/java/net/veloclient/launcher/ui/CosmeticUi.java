@@ -284,7 +284,12 @@ public final class CosmeticUi {
 			ImageView view = new ImageView(ready);
 			view.setFitHeight(fit);
 			view.setPreserveRatio(true);
-			holder.getChildren().setAll(view);
+			if (ready.getProgress() < 1) {
+				// still decoding from disk: a shimmer in the tile's shape until it's in
+				holder.getChildren().setAll(Skeleton.under(view, Math.min(width, fit), fit, 10), view);
+			} else {
+				holder.getChildren().setAll(view);
+			}
 			if (animated) {
 				boolean[] asked = {false};
 				hoverTarget.addEventHandler(javafx.scene.input.MouseEvent.MOUSE_ENTERED, e -> {
@@ -307,6 +312,8 @@ public final class CosmeticUi {
 			}
 			return;
 		}
+		// nothing cached yet: the tile's shape shimmers while the frames are read and rendered
+		holder.getChildren().setAll(Skeleton.shimmer(Math.min(width, fit), fit, 10));
 		frames.accept(list -> {
 			if (list.isEmpty()) {
 				holder.getChildren().clear();
@@ -459,19 +466,23 @@ public final class CosmeticUi {
 
 	// ---- Visual pieces ----
 
-	/** A small gold coin (the Velo Coins icon). */
+	/** The Velo Coin (the engraved Velo logo on gold) - the one coin art everywhere (2026-11-26, some places drew a "V"). */
 	static Node coin(double size) {
-		Circle disc = new Circle(size / 2);
-		disc.setFill(new LinearGradient(0, 0, 1, 1, true, CycleMethod.NO_CYCLE,
-				new Stop(0, Color.web("#ffe38a")), new Stop(0.55, Color.web("#f4b82e")), new Stop(1, Color.web("#c9861a"))));
-		disc.setStroke(Color.web("#a86a10"));
-		disc.setStrokeWidth(Math.max(1, size / 14));
-		Label mark = new Label("V");
-		mark.setStyle("-fx-font-size: " + Math.round(size * 0.55) + "px; -fx-font-weight: 900; -fx-text-fill: #7a4a06;");
-		StackPane coin = new StackPane(disc, mark);
+		StackPane coin = new StackPane(coinImage(size));
 		coin.setMinSize(size, size);
 		coin.setMaxSize(size, size);
 		return coin;
+	}
+
+	static javafx.scene.image.ImageView coinImage(double size) {
+		// decoded at twice the shown size (it's 96 px) so small coins stay crisp on scaled screens
+		double decode = Math.min(96, size * 2);
+		javafx.scene.image.ImageView view = new javafx.scene.image.ImageView(
+				UiImages.resource("/net/veloclient/launcher/images/velo-coin.png", decode, decode));
+		view.setFitWidth(size);
+		view.setFitHeight(size);
+		view.setSmooth(true);
+		return view;
 	}
 
 	/** "<coin> 250" chip, or a green "Owned" chip. */

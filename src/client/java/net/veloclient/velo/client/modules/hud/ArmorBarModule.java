@@ -34,6 +34,11 @@ public final class ArmorBarModule extends AbstractModule implements Configurable
 	private int emptyColor = 0xFF2B2B30;
 	private int outlineColor = 0xFF000000;
 	private boolean tintCustom = false;
+	private boolean serverWins = true;
+	/** Keeps the armor row above every heart row, also the ones extra hearts (more max health, absorption) add. */
+	private boolean followExtraHearts = true;
+	/** Hides the armor row while the server's pack has taken the hearts over (MCC Island and others hide the whole HUD). */
+	private boolean hideWithServer = true;
 
 	public ArmorBarModule() {
 		super("armor-bar", "Armor Bar", "Recolor the armor points above your hearts or draw your own armor icon.",
@@ -45,6 +50,22 @@ public final class ArmorBarModule extends AbstractModule implements Configurable
 		var module = ModuleRegistry.get("armor-bar").orElse(null);
 		if (!(module instanceof ArmorBarModule armor) || !module.isEnabled()) {
 			return false;
+		}
+		boolean serverArmor = net.veloclient.velo.client.hud.ServerHudPack.overridesArmor();
+		if (armor.hideWithServer && !serverArmor && net.veloclient.velo.client.hud.ServerHudPack.overridesHearts()) {
+			return true; // the server hid the hearts and food: an armor row floating alone above them is not wanted
+		}
+		if (armor.serverWins && serverArmor) {
+			return false; // the server's pack styles or hides this row itself
+		}
+		if (armor.followExtraHearts) {
+			// vanilla hands over the rows it counted; recount them from the player's real health so the row always clears
+			// every heart row (extra max health, golden hearts) and uses the row spacing those rows are drawn with
+			int needed = (int) Math.ceil((player.getMaxHealth() + player.getAbsorptionAmount()) / 20.0);
+			if (needed > healthRows) {
+				healthRows = needed;
+				rowHeight = Math.max(10 - (needed - 2), 3);
+			}
 		}
 		//? if <26.1 {
 		int points = player.getArmor();
@@ -106,11 +127,14 @@ public final class ArmorBarModule extends AbstractModule implements Configurable
 				new ConfigField.ColorField("Armor Color", () -> armorColor, v -> armorColor = v, false),
 				new ConfigField.ColorField("Empty Color (Velo Style)", () -> emptyColor, v -> emptyColor = v, true),
 				new ConfigField.ColorField("Outline Color (Velo Style)", () -> outlineColor, v -> outlineColor = v, true),
-				new ConfigField.ActionButtonField("Draw Custom Armor Icon (or import a PNG)...", () -> {
+				new ConfigField.ActionButtonField("Draw Custom Armor Icon...", () -> {
 					style = "Custom Drawing";
 					net.veloclient.velo.client.gui.StatusIconEditor.openFromSettings(KIND, "Armor Icon", armorColor);
 				}),
 				new ConfigField.ToggleField("Tint Custom Drawing With Armor Color", () -> tintCustom, v -> tintCustom = v),
+				new ConfigField.ToggleField("Use the Server's Armor Bar When Its Pack Has Its Own", () -> serverWins, v -> serverWins = v),
+				new ConfigField.ToggleField("Move Up With Extra Hearts", () -> followExtraHearts, v -> followExtraHearts = v),
+				new ConfigField.ToggleField("Hide When the Server Hides the Hearts", () -> hideWithServer, v -> hideWithServer = v),
 				new ConfigField.ActionButtonField("Delete Custom Drawing", () -> {
 					try {
 						StatusBarIcons.delete(KIND);

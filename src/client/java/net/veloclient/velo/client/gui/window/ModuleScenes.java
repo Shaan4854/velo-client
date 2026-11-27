@@ -210,13 +210,22 @@ public final class ModuleScenes {
 					}
 				}
 				case "potion-timers" -> {
-					String[][] fx = {{"speed", "Speed II", "1:24"}, {"strength", "Strength", "0:52"}, {"fire_resistance", "Fire Resistance", "6:30"}};
-					int ry = cy - 30;
+					String[][] fx = {{"speed", "Speed II", "1:24"}, {"strength", "Strength", "0:52"}, {"fire_resistance", "Fire Resistance", "6:30"}, {"regeneration", "Regeneration", "0:07"}};
+					// the two styles as the HUD draws them: List = icon, name and time; Compact = icon and time only
+					boolean compact = choice(module, "style", "List").equals("Compact");
+					int rowH = compact ? 20 : 24;
+					int ry = cy - fx.length * rowH / 2;
+					int left = compact ? cx - 24 : cx - 60;
 					for (String[] f : fx) {
-						tex(context, "mob_effect/" + f[0], cx - 60, ry, 18, 18, 18, 18, 0, 0xFFFFFFFF);
-						net.veloclient.velo.client.hud.HudLook.draw(context, f[1], cx - 38, ry + 1, 0xFFFFFFFF);
-						net.veloclient.velo.client.hud.HudLook.draw(context, f[2], cx - 38, ry + 10, 0xFFB3A8A9);
-						ry += 22;
+						boolean low = f[2].startsWith("0:0");
+						tex(context, "mob_effect/" + f[0], left, ry + (rowH - 18) / 2, 18, 18, 18, 18, 0, 0xFFFFFFFF);
+						if (compact) {
+							net.veloclient.velo.client.hud.HudLook.draw(context, f[2], left + 23, ry + (rowH - 9) / 2, low ? 0xFFFF6B73 : 0xFFFFFFFF);
+						} else {
+							net.veloclient.velo.client.hud.HudLook.draw(context, f[1], left + 23, ry + 2, 0xFFFFFFFF);
+							net.veloclient.velo.client.hud.HudLook.draw(context, f[2], left + 23, ry + 12, low ? 0xFFFF6B73 : 0xFFD4D4DA);
+						}
+						ry += rowH;
 					}
 				}
 				case "scoreboard-hud" -> {
@@ -614,20 +623,27 @@ public final class ModuleScenes {
 					double cycle = t % (swing + 1.6);
 					boolean blocking = on && !blockMode.equals("Off") && (int) (t / (swing + 1.6)) % 2 == 1;
 					double swingP = cycle < swing ? cycle / swing : -1;
+					// held like in first person (owner 2026-11-26: it looked twisted): the grip sits bottom right, the blade points
+					// up-left at the crosshair, and everything turns around the grip - a hit swings the blade forward and down,
+					// 1.7 blocking tilts it across the screen
 					push(context);
-					float ix = x + w - 70;
-					float iy = y + h - 64;
+					float gx = x + w - 34;
+					float gy = y + h - 14;
+					double angle = -90;   // the sprite's blade points up-right; -90 turns it up-left
 					if (blocking) {
-						move(context, ix - 20, iy - 12);
-						rotate(context, (float) Math.toRadians(-60));
+						gx -= 26;
+						gy -= 14;
+						angle -= 38;
 					} else if (swingP >= 0) {
 						double a = Math.sin(swingP * Math.PI);
-						move(context, (float) (ix - a * 30), (float) (iy - a * 18));
-						rotate(context, (float) Math.toRadians(-a * 50));
-					} else {
-						move(context, ix, iy);
+						gx -= (float) (a * 22);
+						gy -= (float) (a * 10);
+						angle -= a * 48;
 					}
+					move(context, gx, gy);
+					rotate(context, (float) Math.toRadians(angle));
 					scale(context, 4f, 4f);
+					move(context, -2f, -14f);   // the grip (pixel 2,14 of the sprite) on the pivot
 					context.drawItemWithoutEntity(net.veloclient.velo.client.pvp.PvpCompat.itemStack("minecraft:diamond_sword"), 0, 0);
 					pop(context);
 					Text label = Text.literal(blocking ? "blocking" : swingP >= 0 ? "hit" : "");
@@ -680,11 +696,9 @@ public final class ModuleScenes {
 					}
 				}
 				case "health-indicator" -> {
-					for (int i = 0; i < 10; i++) {
-						sprite(context, "hud/heart/container", cx - 40 + i * 8, head - 12, 9, 9);
-						if (i < 7) {
-							sprite(context, "hud/heart/full", cx - 40 + i * 8, head - 12, 9, 9);
-						}
+					// the module's own line for a hurt player with absorption - every setting shows here
+					if (net.veloclient.velo.client.modules.pvp.HealthIndicatorModule.preview(14f, 20f, 4f) instanceof Text line) {
+						MenuKit.text(context, tr, line, cx - MenuKit.width(tr, line) / 2, head - 12, 0xFFFFFFFF);
 					}
 				}
 				case "enemy-effects" -> {
@@ -715,11 +729,8 @@ public final class ModuleScenes {
 					}
 				}
 				case "enemy-hunger" -> {
-					for (int i = 0; i < 10; i++) {
-						sprite(context, "hud/food_empty", cx + 31 - i * 8, head - 12, 9, 9);
-						if (i < 6) {
-							sprite(context, "hud/food_full", cx + 31 - i * 8, head - 12, 9, 9);
-						}
+					if (net.veloclient.velo.client.modules.pvp.EnemyHungerModule.preview(13f, 2.4f) instanceof Text line) {
+						MenuKit.text(context, tr, line, cx - MenuKit.width(tr, line) / 2, head - 12, 0xFFFFFFFF);
 					}
 				}
 				case "own-name-tag", "nick-hider" -> {

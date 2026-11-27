@@ -318,6 +318,12 @@
   "category": "performance"
  },
  {
+  "id": "input-sampler",
+  "name": "Fast Crystal",
+  "description": "Reads your input again right before each tick, so a crystal place or hit isn't left waiting behind a slow frame. The server's tick and hit registration stay as they are.",
+  "category": "pvp"
+ },
+ {
   "id": "fast-grow",
   "name": "Fast Grow",
   "description": "Singleplayer: crops, amethyst, saplings and other growing blocks grow up to 100x faster.",
@@ -368,7 +374,7 @@
  {
   "id": "full-bright",
   "name": "Full Bright",
-  "description": "Makes everything lit at all read as fully bright (vanilla Night Vision rendering, always on).",
+  "description": "Everything as bright as daylight - caves, nights, every corner - in its real colours.",
   "category": "rendering"
  },
  {
@@ -480,12 +486,6 @@
   "category": "hud"
  },
  {
-  "id": "input-sampler",
-  "name": "Input Latency Sub-Tick Sampling",
-  "description": "Timestamps mouse clicks off the main thread so latency doesn't depend on frame rate, and (optionally) polls input again at the start of every tick to notice clicks sooner during FPS stalls.",
-  "category": "performance"
- },
- {
   "id": "inventory-hud",
   "name": "Inventory HUD",
   "description": "Shows your inventory on screen so you see what you still have mid-fight.",
@@ -538,6 +538,12 @@
   "name": "Low Health Warning",
   "description": "Red glow around the screen (and a heartbeat) when your health is low.",
   "category": "pvp"
+ },
+ {
+  "id": "low-latency",
+  "name": "Low Latency Mode",
+  "description": "Shows a fresher picture: frames wait for the GPU instead of queueing, and an optional precise frame cap stops drawing frames your screen never shows. Lowers the FPS number, lowers input lag.",
+  "category": "performance"
  },
  {
   "id": "lyrics",
@@ -813,6 +819,12 @@
   "id": "target-hud",
   "name": "Target HUD",
   "description": "Shows the player you're fighting: health, armor, distance and who's winning.",
+  "category": "pvp"
+ },
+ {
+  "id": "tier-tagger",
+  "name": "Tier Tagger",
+  "description": "Shows players' PvP tiers (PvPTiers, SubTiers) next to their name - above their head and in the tab list.",
   "category": "pvp"
  },
  {

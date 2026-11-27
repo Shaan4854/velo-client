@@ -69,6 +69,8 @@ public final class VeloClientMod implements ClientModInitializer {
 
 	@Override
 	public void onInitializeClient() {
+		// Instant Play: a waiting (hidden) game watches for the launcher's signal to show its window.
+		net.veloclient.velo.client.util.ParkedGame.init();
 		// Cosmetics are per Minecraft account: the Velo launcher says which (-Dvelo.account), other launchers via --uuid.
 		if (net.veloclient.velo.config.VeloPaths.account() == null) {
 			String[] args = net.fabricmc.loader.api.FabricLoader.getInstance().getLaunchArguments(false);
@@ -116,6 +118,13 @@ public final class VeloClientMod implements ClientModInitializer {
 		VeloKeybinds.register();
 		net.veloclient.velo.client.keybind.MenuKeySync.register();
 		net.veloclient.velo.client.util.ClassWarmup.register();
+		net.veloclient.velo.client.util.MemoryTrim.register();
+		net.veloclient.velo.client.devtools.SkyboxSmoke.register();
+		net.veloclient.velo.client.devtools.DrawerTour.register();
+		net.veloclient.velo.client.devtools.DrawerBench.register();
+		net.veloclient.velo.client.devtools.FullBrightTest.register();
+		net.veloclient.velo.client.devtools.TierTagTest.register();
+		net.veloclient.velo.client.util.PerfTelemetry.register();
 		net.veloclient.velo.client.util.FontWarmup.register();
 		net.veloclient.velo.client.util.StuckButtons.register();
 		net.veloclient.velo.client.report.FreezeWatchdog.register();
@@ -305,6 +314,7 @@ public final class VeloClientMod implements ClientModInitializer {
 	private void registerModules() {
 		// PvP
 		ModuleRegistry.register(new net.veloclient.velo.client.modules.pvp.OldAnimationsModule());
+		ModuleRegistry.register(new net.veloclient.velo.client.modules.pvp.TierTaggerModule());
 		ModuleRegistry.register(new net.veloclient.velo.client.modules.pvp.ItemPositionModule());
 		ModuleRegistry.register(new net.veloclient.velo.client.modules.rendering.HoldUpItemsModule());
 		ModuleRegistry.register(new net.veloclient.velo.client.modules.rendering.ParticleSizeModule());
@@ -446,6 +456,7 @@ public final class VeloClientMod implements ClientModInitializer {
 		ModuleRegistry.register(new FovModule());
 		ModuleRegistry.register(new net.veloclient.velo.client.modules.rendering.ScreenStretchModule());
 		ModuleRegistry.register(new InputSamplerModule());
+		ModuleRegistry.register(new net.veloclient.velo.client.modules.performance.LowLatencyModule());
 
 		// Utility
 		ModuleRegistry.register(new CopyCoordinatesModule());

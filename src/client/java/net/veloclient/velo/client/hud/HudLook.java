@@ -66,27 +66,31 @@ public final class HudLook {
 	}
 	*///?}
 
-	private static final java.util.Map<String, Text> TEXTS = new java.util.HashMap<>();
+	// one map per kind, keyed by the string itself (a "kind + s" key built a new String on every lookup)
+	private static final java.util.Map<String, Text> VALUE_TEXTS = new java.util.HashMap<>();
+	private static final java.util.Map<String, Text> LABEL_TEXTS = new java.util.HashMap<>();
 	private static final java.util.Map<Text, Prepared> PREPARED = new java.util.IdentityHashMap<>();
 	private static String preparedFont = "";
 
 	private static final boolean NO_TEXT_CACHE = Boolean.getBoolean("velo.noHudTextCache");
 
-	private static Text shared(char kind, String s, java.util.function.Supplier<Text> make) {
+	private static Text shared(boolean value, String s) {
 		if (NO_TEXT_CACHE) {
-			return make.get();
+			return value ? makeValue(s) : makeLabel(s);
 		}
 		String f = font();
-		if (!f.equals(preparedFont) || TEXTS.size() > 2048) {
+		if (!f.equals(preparedFont) || VALUE_TEXTS.size() + LABEL_TEXTS.size() > 2048) {
 			// a new HUD font, or a lot of one-off strings (timers, coordinates): start over
-			TEXTS.clear();
+			VALUE_TEXTS.clear();
+			LABEL_TEXTS.clear();
 			PREPARED.clear();
 			preparedFont = f;
 		}
-		Text text = TEXTS.get(kind + s);
+		java.util.Map<String, Text> texts = value ? VALUE_TEXTS : LABEL_TEXTS;
+		Text text = texts.get(s);
 		if (text == null) {
-			text = make.get();
-			TEXTS.put(kind + s, text);
+			text = value ? makeValue(s) : makeLabel(s);
+			texts.put(s, text);
 			PREPARED.put(text, null);
 		}
 		return text;
@@ -112,16 +116,24 @@ public final class HudLook {
 
 	/** A value in the HUD font, bold. */
 	public static Text value(String s) {
-		return shared('v', s, () -> preview(font(), s));
+		return shared(true, s);
+	}
+
+	private static Text makeValue(String s) {
+		return preview(font(), s);
 	}
 
 	/** Secondary text (units, names) in the HUD font (Inter next to Sora, as before). */
 	public static Text label(String s) {
-		return shared('l', s, () -> switch (font()) {
+		return shared(false, s);
+	}
+
+	private static Text makeLabel(String s) {
+		return switch (font()) {
 			case "Inter", "Sora" -> MenuKit.ui(s);
 			case "Minecraft" -> Text.literal(s);
 			default -> preview(font(), s);
-		});
+		};
 	}
 
 	private static Text inHudFont(Text t) {
@@ -219,6 +231,74 @@ public final class HudLook {
 		}
 	}
 
+	/** The menus' glass, for the HUD: a light tint over real blur (the blur goes behind every glass panel - see HudManager). */
+	public static void glassPanel(DrawContext context, int x, int y, int w, int h, int radius) {
+		record(context, x, y, w, h, radius);
+		VeloDraw.fillRounded(context, x, y, w, h, radius, 0x5C141418);
+	}
+
+	// ---- where the glass panels are (screen pixels), collected while the HUD draws; the blur goes behind them next frame
+	private static java.util.List<int[]> rectSink;
+	private static java.util.List<int[]> lastRects = java.util.List.of();
+
+	public static void beginRects() {
+		rectSink = new java.util.ArrayList<>();
+	}
+
+	public static void endRects() {
+		if (rectSink != null) {
+			lastRects = rectSink;
+		}
+		rectSink = null;
+	}
+
+	public static java.util.List<int[]> rects() {
+		return lastRects;
+	}
+
+	/** HUD Style "Glass": real blur behind the panels. */
+	public static boolean glassBlur() {
+		HudStyleModule style = style();
+		return style != null && style.background().equals("Glass");
+	}
+
+	private static void record(DrawContext context, int x, int y, int w, int h, int radius) {
+		if (rectSink == null) {
+			return;
+		}
+		//? if >=1.21.2 {
+		var m = context.getMatrices();
+		org.joml.Vector2f a = m.transformPosition(x, y, new org.joml.Vector2f());
+		org.joml.Vector2f b = m.transformPosition(x + w, y + h, new org.joml.Vector2f());
+		float scale = Math.abs(b.x - a.x) / Math.max(1, w);
+		rectSink.add(new int[] {Math.round(Math.min(a.x, b.x)), Math.round(Math.min(a.y, b.y)), Math.round(Math.abs(b.x - a.x)), Math.round(Math.abs(b.y - a.y)),
+				Math.round(radius * scale)});
+		//?}
+	}
+
+	/** A glass panel with its own corner radius (the Mouse style's body). */
+	public static void stylePanel(DrawContext context, int x, int y, int w, int h, int radius) {
+		HudStyleModule style = style();
+		if (style != null && style.background().equals("Solid")) {
+			VeloDraw.fillRounded(context, x, y, w, h, radius, SOLID);
+			VeloDraw.strokeRounded(context, x, y, w, h, radius, 0x1CFFFFFF);
+			return;
+		}
+		glassPanel(context, x, y, w, h, radius);
+	}
+
+	/** The element's panel in the HUD Style's look - glass when the HUD Style has no background of its own. */
+	public static void stylePanel(DrawContext context, int x, int y, int w, int h) {
+		HudStyleModule style = style();
+		int radius = style == null || style.rounded() ? Math.min(h / 2, 6) : 2;
+		if (style != null && style.background().equals("Solid")) {
+			VeloDraw.fillRounded(context, x, y, w, h, radius, SOLID);
+			VeloDraw.strokeRounded(context, x, y, w, h, radius, 0x1CFFFFFF);
+			return;
+		}
+		glassPanel(context, x, y, w, h, radius);
+	}
+
 	/** The panel behind an element, per the style (nothing without a background). */
 	public static void panel(DrawContext context, int x, int y, int w, int h) {
 		HudStyleModule style = style();
@@ -226,7 +306,11 @@ public final class HudLook {
 			return;
 		}
 		int radius = style.rounded() ? Math.min(h / 2, 7) : 2;
-		VeloDraw.fillRounded(context, x, y, w, h, radius, style.background().equals("Solid") ? SOLID : GLASS);
+		if (!style.background().equals("Solid")) {
+			glassPanel(context, x, y, w, h, radius);   // 2026-11-25: the same glass as the menus
+			return;
+		}
+		VeloDraw.fillRounded(context, x, y, w, h, radius, SOLID);
 		VeloDraw.strokeRounded(context, x, y, w, h, radius, 0x1CFFFFFF);
 	}
 

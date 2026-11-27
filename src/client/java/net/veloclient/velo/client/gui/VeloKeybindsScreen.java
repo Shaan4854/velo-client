@@ -131,6 +131,9 @@ public final class VeloKeybindsScreen extends VeloWindow {
 			scrollTarget = 0;
 		});
 		addDrawableChild(search);
+		// focused right away: type to find an action or a key
+		setFocused(search);
+		search.setFocused(true);
 	}
 
 	private static Identifier icon(String categoryId) {
@@ -180,13 +183,14 @@ public final class VeloKeybindsScreen extends VeloWindow {
 		// List / Keyboard: a segmented switch.
 		int segX = x + searchW + 8;
 		int segW = 64;
-		VeloDraw.fillRounded(context, segX, y, segW * 2, 24, 7, 0xFF131318);
-		VeloDraw.strokeRounded(context, segX, y, segW * 2, 24, 7, 0x17FFFFFF);
-		VeloDraw.fillRounded(context, segX + 2 + (mapView ? segW : 0), y + 2, segW - 4, 20, 5, VeloUi.withAlpha(MenuKit.accent(), 0x40));
+		VeloDraw.fillRounded(context, segX, y, segW * 2, 24, 12, 0x47000000);
+		float seg = MenuKit.hover("keybinds:mapView", mapView);
+		VeloDraw.fillRounded(context, segX + 2 + segW * seg, y + 2, segW - 4, 20, 10, MenuKit.accent());
 		for (int i = 0; i < 2; i++) {
-			Text label = MenuKit.ui(i == 0 ? "List" : "Keyboard");
-			boolean on = (i == 1) == mapView;
-			MenuKit.text(context, this.textRenderer, label, segX + i * segW + (segW - this.textRenderer.getWidth(label)) / 2, y + 8, on ? MenuKit.TEXT : MenuKit.TEXT_3);
+			Text label = MenuKit.uiBold(i == 0 ? "List" : "Keyboard");
+			float on = i == 1 ? seg : 1f - seg;
+			MenuKit.text(context, this.textRenderer, label, segX + i * segW + (segW - this.textRenderer.getWidth(label)) / 2, y + 8,
+					net.veloclient.velo.client.gui.widget.VeloAnim.lerpArgb(MenuKit.TEXT_3, MenuKit.onAccent(), on));
 			boolean map = i == 1;
 			hits.add(new VeloUi.Hit(segX + i * segW, y, segW, 24, () -> mapView = map));
 		}
@@ -217,6 +221,7 @@ public final class VeloKeybindsScreen extends VeloWindow {
 				@Override
 				public void listen(KeyBinding binding) {
 					listening = binding;
+					stopTyping();
 					status = "";
 				}
 
@@ -290,11 +295,10 @@ public final class VeloKeybindsScreen extends VeloWindow {
 
 			// Group header.
 			boolean headerHover = VeloUi.inside(mouseX, mouseY, x, rowY, width, 28) && mouseY >= top && mouseY < bottom;
-			VeloDraw.fillRounded(context, x, rowY, width, 28, 8, headerHover ? 0xFF1A1A21 : 0xFF131318);
-			VeloDraw.strokeRounded(context, x, rowY, width, 28, 8, headerHover ? 0x26FFFFFF : 0x14FFFFFF);
+			VeloDraw.fillRounded(context, x, rowY, width, 28, 10, headerHover || open ? 0x1FFFFFFF : 0x10FFFFFF);
 			rotatingChevron(context, x + 14, rowY + 14, 7f, eased, open ? MenuKit.TEXT : MenuKit.TEXT_3);
-			VeloDraw.fillRounded(context, x + 26, rowY + 5, 18, 18, 5, VeloUi.withAlpha(MenuKit.accent(), 0x26));
-			drawIcon(context, icon(id), x + 29, rowY + 8, 12, MenuKit.accent());
+			VeloDraw.fillRounded(context, x + 26, rowY + 5, 18, 18, 9, 0x1FFFFFFF);
+			drawIcon(context, icon(id), x + 29, rowY + 8, 12, 0xFFFFFFFF);
 			Text label = MenuKit.uiBold(entry.getValue());
 			MenuKit.text(context, this.textRenderer, label, x + 52, rowY + 10, MenuKit.TEXT);
 			Text count = MenuKit.small(String.valueOf(rows.size()));
@@ -305,7 +309,7 @@ public final class VeloKeybindsScreen extends VeloWindow {
 			if (groupConflicts > 0) {
 				Text warn = MenuKit.small(groupConflicts + (groupConflicts == 1 ? " CONFLICT" : " CONFLICTS"));
 				int ww = this.textRenderer.getWidth(warn) + 10;
-				VeloDraw.fillRounded(context, x + width - ww - 10, rowY + 8, ww, 12, 4, 0x33FF5A5A);
+				VeloDraw.fillRounded(context, x + width - ww - 10, rowY + 8, ww, 12, 6, 0x26FF5A5A);
 				MenuKit.text(context, this.textRenderer, warn, x + width - ww - 5, rowY + 10, 0xFFFF8A8A);
 			}
 			if (rowY + 28 > top && rowY < bottom && !filtering) {
@@ -397,6 +401,7 @@ public final class VeloKeybindsScreen extends VeloWindow {
 		boolean visible = y + 22 > top && y < bottom;
 		VeloUi.Hit keyHit = VeloUi.pill(context, keyX, y + 2, keyW, 18, key, isListening ? 1 : conflict ? 3 : 0, mouseX, mouseY, () -> {
 			listening = binding;
+			stopTyping();
 			status = "";
 		});
 		if (visible) {
@@ -427,11 +432,44 @@ public final class VeloKeybindsScreen extends VeloWindow {
 
 	// ---- Input ----
 
+	/** Until when the character events of the key just bound are swallowed (see {@link #charTyped}). */
+	private long swallowCharsUntil;
+
+	/** A binding starts listening: the search box lets go, so the pressed key can't also type into it. */
+	private void stopTyping() {
+		if (search != null) {
+			search.setFocused(false);
+		}
+		setFocused(null);
+	}
+
+	/**
+	 * The key that was just bound also sends a character event of its own, after keyPressed; it used to land in the
+	 * still-focused search box and change the results ("the character gets input into the search box and the keybind
+	 * box", 1.5.1.1). Swallowed while listening and right after a key was taken.
+	 */
+	private boolean swallowChar() {
+		return listening != null || System.nanoTime() < swallowCharsUntil;
+	}
+
+	//? if <26.1 {
+	@Override
+	public boolean charTyped(net.minecraft.client.input.CharInput input) {
+		return swallowChar() || super.charTyped(input);
+	}
+	//?} else {
+	/*@Override
+	public boolean charTyped(net.minecraft.client.input.CharacterEvent input) {
+		return swallowChar() || super.charTyped(input);
+	}
+	*///?}
+
 	@Override
 	public boolean keyPressed(net.minecraft.client.input.KeyInput input) {
 		if (listening != null) {
 			KeyBinding binding = listening;
 			listening = null;
+			swallowCharsUntil = System.nanoTime() + 250_000_000L;
 			if (input.key() == net.veloclient.velo.client.util.Keys.ESCAPE) {
 				status = "Cancelled";
 			} else if (input.key() == net.veloclient.velo.client.util.Keys.BACKSPACE || input.key() == net.veloclient.velo.client.util.Keys.DELETE) {

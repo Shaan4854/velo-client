@@ -310,7 +310,7 @@ public final class BugReportDialog {
 			"(--accessToken\\s+)\\S+|eyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}");
 
 	/** Never send a Minecraft access token: native crash dumps (hs_err) contain the whole launch command line. */
-	static String redactSecrets(String text) {
+	public static String redactSecrets(String text) {
 		if (text == null || text.isEmpty()) {
 			return text;
 		}
@@ -319,7 +319,7 @@ public final class BugReportDialog {
 	}
 
 	/** The Velo modules that were on in this profile's last game (the game writes them every 10 s), or null. */
-	static com.google.gson.JsonArray activeModules(Path gameDir) {
+	public static com.google.gson.JsonArray activeModules(Path gameDir) {
 		try {
 			Path file = gameDir.resolve("config").resolve("velo-client").resolve("active-modules.txt");
 			if (!java.nio.file.Files.isRegularFile(file)) {

@@ -90,7 +90,7 @@ float stars(vec3 dir, float cells, float density, float pxAngle, float time) {
             continue;
         }
         vec3 sp = normalize(c + 0.15 + 0.7 * hash3(c + 17.0));
-        float ang = acos(clamp(dot(dir, sp), -1.0, 1.0));
+        float ang = length(dir - sp); // chord = angle for tiny angles, no acos per cell
         float size = pxAngle * (0.45 + 0.55 * h.y * h.y);
         float b = 0.22 + 0.78 * h.z * h.z * h.z;
         b *= 0.8 + 0.2 * sin(time * (1.5 + 3.0 * h.x) + h.y * 40.0);
@@ -124,7 +124,10 @@ void main() {
     float lon = atan(dir.x, -dir.z) / (2.0 * PI) + 0.5 + turn;
     float lat = asin(clamp(dir.y, -1.0, 1.0));
     vec2 uv = vec2(fract(lon), 0.5 - lat / PI);
-    vec3 sky = texture(SkySampler, uv).rgb * bright;
+    // derivatives of the continuous longitude: fract() jumps 1 -> 0 at one meridian, and the hardware read that jump as a
+    // huge texel step there - a thin vertical line through the sky (owner, 2026-11-25)
+    vec2 smoothUv = vec2(lon, uv.y);
+    vec3 sky = textureGrad(SkySampler, uv, dFdx(smoothUv), dFdy(smoothUv)).rgb * bright;
     float starAmount = (val(17) + 1.0) * 0.5;
     if (starAmount > 0.0) {
         float time = (val(16) + 1.0) * 30.0;

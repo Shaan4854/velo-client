@@ -30,7 +30,8 @@ public final class HudManager {
 	}
 
 	public static boolean hidesVanillaBossBar() {
-		return ModuleRegistry.get("boss-bar").map(Module::isEnabled).orElse(false);
+		// Redstone Mode: its overlay owns the top of the screen (the boss bar sat over it)
+		return net.veloclient.velo.client.redstone.RedstoneMode.active() || ModuleRegistry.get("boss-bar").map(Module::isEnabled).orElse(false);
 	}
 
 	public static boolean hidesVanillaScoreboard() {
@@ -97,7 +98,7 @@ public final class HudManager {
 		// twice in two different positions/styles at once.
 		// Boss bars: drawn (or hidden) by the Boss Bar module while it's on.
 		HudElementRegistry.replaceElement(VanillaHudElements.BOSS_BAR, vanilla -> (context, tickCounter) -> {
-			boolean handled = ModuleRegistry.get("boss-bar").map(Module::isEnabled).orElse(false);
+			boolean handled = hidesVanillaBossBar();   // Boss Bar module, or Redstone Mode (its overlay owns the top)
 			if (!handled) {
 				vanilla.render(context, tickCounter);
 			}
@@ -157,7 +158,12 @@ public final class HudManager {
 		if (net.veloclient.velo.client.redstone.RedstoneMode.active()) {
 			// Redstone Mode replaces the whole Velo HUD with its own overlay (Edit HUD Layout draws it itself).
 			if (!(net.veloclient.velo.client.hud.HudSample.active())) {
-				net.veloclient.velo.client.redstone.RmHud.render(context, screenWidth, screenHeight, tickDelta);
+				HudLook.beginRects();
+				try {
+					net.veloclient.velo.client.redstone.RmHud.render(context, screenWidth, screenHeight, tickDelta);
+				} finally {
+					HudLook.endRects();
+				}
 			}
 			return;
 		}
@@ -168,17 +174,27 @@ public final class HudManager {
 		net.veloclient.velo.client.redstone.RmAnalysis.renderOutside(context, screenWidth, screenHeight);
 		// Velo Turbo: the modules redraw at most 360 times a second; frames in between reuse what they drew. In whole-HUD
 		// mode the recording already wraps the entire HUD (TurboHudWholeMixin) - the modules just draw into it.
+		var screen = net.veloclient.velo.client.util.ClientCompat.currentScreen();
+		// Tier Tagger's all-tiers ring: laid out now so its glass chips get the blur too
+		net.veloclient.velo.client.tiers.TierRing.prepare(screenWidth, screenHeight);
+		if (screen instanceof net.veloclient.velo.client.gui.drawer.VeloDrawerScreen || screen instanceof net.veloclient.velo.client.gui.HudEditScreen) {
+			// the editors draw the HUD themselves, live: the (cached) copy under them lagged behind while dragging
+			net.veloclient.velo.client.social.NotificationOverlay.renderHud(context, screenWidth, screenHeight);
+			return;
+		}
 		boolean whole = HudFrameCache.wholeHud();
 		if (!whole && HudFrameCache.replay(context, screenWidth, screenHeight)) {
 			net.veloclient.velo.client.browser.BrowserModule.renderHud(context, screenWidth, screenHeight);
 		net.veloclient.velo.client.report.SpikeRecorder.renderHud(context, screenWidth);
 		net.veloclient.velo.client.social.NotificationOverlay.renderHud(context, screenWidth, screenHeight);
+			net.veloclient.velo.client.tiers.TierRing.renderHud(context, screenWidth, screenHeight);
 			return;
 		}
 		if (!whole) {
 			HudFrameCache.beginRecord(context, screenWidth, screenHeight);
 		}
 		boolean completed = false;
+		HudLook.beginRects();
 		try {
 			for (Module module : ModuleRegistry.all()) {
 				if (!(module instanceof HudModule hud) || !hud.isEnabled()) {
@@ -194,6 +210,7 @@ public final class HudManager {
 			}
 			completed = true;
 		} finally {
+			HudLook.endRects();
 			if (!whole) {
 				HudFrameCache.endRecord(context, completed);
 			}
@@ -201,6 +218,7 @@ public final class HudManager {
 		net.veloclient.velo.client.browser.BrowserModule.renderHud(context, screenWidth, screenHeight);
 		net.veloclient.velo.client.report.SpikeRecorder.renderHud(context, screenWidth);
 		net.veloclient.velo.client.social.NotificationOverlay.renderHud(context, screenWidth, screenHeight);
+		net.veloclient.velo.client.tiers.TierRing.renderHud(context, screenWidth, screenHeight);
 	}
 
 	/** Renders one HUD element at its configured position, scaled outward from its own top-left corner. */

@@ -35,8 +35,10 @@ public final class SkyboxModule extends AbstractModule implements Configurable {
 
 	//? if >=26.3 {
 	/*private static final Identifier EFFECT = Identifier.of("velo-client", "skybox_spirv");
+	private static final Identifier DIRECT = Identifier.of("velo-client", "skybox_direct_spirv");
 	*///?} else {
 	private static final Identifier EFFECT = Identifier.of("velo-client", "skybox");
+	private static final Identifier DIRECT = Identifier.of("velo-client", "skybox_direct");
 	//?}
 	private static final Identifier SKY_ID = Identifier.of("velo-client", "textures/effect/skybox.png");
 	private static final Identifier PARAMS_ID = Identifier.of("velo-client", "textures/effect/skybox_params.png");
@@ -100,16 +102,30 @@ public final class SkyboxModule extends AbstractModule implements Configurable {
 				ModuleCategory.RENDERING, SafetyTag.ALWAYS_SAFE, false);
 		instance = this;
 		//? if >=26.2 {
-		/*// Preferred spot: right after the solid terrain, before entities, text (Lyrics), water, clouds and particles - so all
-		// of those land in front of the sky. Lyrics write no depth, so the old after-the-world pass painted over them.
-		net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents.AFTER_OPAQUE_TERRAIN.register(context -> {
+		/*// Drawn before the world: right after vanilla's sky, at the start of the main pass. Terrain, clouds, water, entities,
+		// text (Lyrics) and particles are all drawn over it afterwards - no depth test needed, so nothing can end up behind
+		// the sky (clouds did with Fabulous, where they never reach the main depth buffer), and at full opacity it's one
+		// pass straight into the frame instead of a full-screen copy there and back.
+		net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents.START_MAIN.register(context -> {
 			earlyRan = true;
-			applyIfActive();
+			SkyboxModule m = instance;
+			if (m != null && m.isEnabled() && !broken) {
+				m.apply(m.opacity >= 0.999);
+			}
 		});
-		*///?}
+		*///?} else if >=1.21.10 {
+		// 1.21.10 / 1.21.11: Fabric's world render event at the start of the main pass - same spot, same direct pass
+		net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents.START_MAIN.register(context -> {
+			earlyRan = true;
+			SkyboxModule m = instance;
+			if (m != null && m.isEnabled() && !broken) {
+				m.apply(m.opacity >= 0.999);
+			}
+		});
+		//?}
 	}
 
-	/** The early pass (after the opaque terrain) ran this frame - the after-the-world fallback then skips. */
+	/** The early pass (start of the main pass) ran this frame - the after-the-world fallback then skips. */
 	private static boolean earlyRan;
 
 	/**
@@ -124,12 +140,43 @@ public final class SkyboxModule extends AbstractModule implements Configurable {
 		applyIfActive();
 	}
 
-	/** Only where the level-render hook exists (26.2+). */
+	/** Where a level-render hook exists: 26.2+ and 1.21.10 / 1.21.11 (owner 2026-11-24: "Custom Skybox on 1.21.11"). */
 	public static boolean supported() {
 		//? if >=26.2 {
 		/*return true;
+		*///?} else if >=1.21.10 && <26.1 {
+		return true;
+		//?} else {
+		/*return false;
+		*///?}
+	}
+
+	/** The sun's angle in radians (0 = noon): Velo Shaders captures it from the sky on 26.2+; 1.21.x works it out here. */
+	private static double sunAngle() {
+		//? if >=26.2 {
+		/*return VeloShadersModule.sunAngle();
+		*///?} else if >=26.1 {
+		/*return 0; // no Custom Skybox on 26.1
 		*///?} else {
-		return false;
+		MinecraftClient client = MinecraftClient.getInstance();
+		if (client.world == null) {
+			return 0;
+		}
+		// vanilla's sky angle (DimensionType.getSkyAngle): eased fraction of the day, 0 = noon
+		double d = net.minecraft.util.math.MathHelper.fractionalPart(client.world.getTimeOfDay() / 24000.0 - 0.25);
+		double e = 0.5 - Math.cos(d * Math.PI) / 2.0;
+		return (d * 2.0 + e) / 3.0 * Math.PI * 2.0;
+		//?}
+	}
+
+	private static int moonPhase() {
+		//? if >=26.2 {
+		/*return VeloShadersModule.moonPhase();
+		*///?} else if >=26.1 {
+		/*return 0;
+		*///?} else {
+		MinecraftClient client = MinecraftClient.getInstance();
+		return client.world == null ? 0 : (int) Math.floorMod(client.world.getTimeOfDay() / 24000L, 8L);
 		//?}
 	}
 
@@ -139,10 +186,11 @@ public final class SkyboxModule extends AbstractModule implements Configurable {
 		if (m == null || !m.isEnabled() || broken) {
 			return;
 		}
-		m.apply();
+		m.apply(false);
 	}
 
-	private void apply() {
+	/** {@code direct}: before the world, straight into the frame (full opacity); else the depth-tested blend pass. */
+	private void apply(boolean direct) {
 		MinecraftClient client = MinecraftClient.getInstance();
 		if (client.player == null || client.world == null) {
 			return;
@@ -184,7 +232,7 @@ public final class SkyboxModule extends AbstractModule implements Configurable {
 			if (net.veloclient.velo.client.util.ClientCompat.reloadingResources()) {
 				return; // never mid-reload (see ClientCompat.reloadingResources)
 			}
-			processor = load(client, EFFECT);
+			processor = load(client, direct ? DIRECT : EFFECT);
 			if (processor == null) {
 				return;
 			}
@@ -226,7 +274,7 @@ public final class SkyboxModule extends AbstractModule implements Configurable {
 		float[] ez = net.veloclient.velo.client.util.ClientCompat.cameraView(cam[0], cam[1], cam[2] + 1);
 		double aspect = client.getWindow().getWidth() / (double) Math.max(1, client.getWindow().getHeight());
 		double turn = (rotation / 360.0 + (System.nanoTime() / 1e9) * spin / 360.0 / 60.0) % 1.0;
-		double night = darkerAtNight ? smooth(-0.15, 0.25, VeloShadersModule.sunHeight()) : 1.0;
+		double night = darkerAtNight ? smooth(-0.15, 0.25, Math.cos(sunAngle())) : 1.0;
 		double bright = Math.max(0, Math.min(1, brightness * (0.28 + 0.72 * night)));
 		double[] v = {
 				ex[0], ey[0], ez[0],          // right
@@ -237,8 +285,9 @@ public final class SkyboxModule extends AbstractModule implements Configurable {
 				-1,                           // flipY off
 				(System.nanoTime() / 1e9 % 60.0) / 30.0 - 1,   // star twinkle clock
 				starAmount() * 2 - 1, stars * 2 - 1,
-				-Math.sin(VeloShadersModule.sunAngle()), Math.cos(VeloShadersModule.sunAngle()), // sun direction (x, y)
-				VeloShadersModule.moonPhase() / 8.0 * 2 - 1, -1, -1};
+				-Math.sin(sunAngle()), Math.cos(sunAngle()), // sun direction (x, y)
+				moonPhase() / 8.0 * 2 - 1,
+				client.getWindow().getHeight() / 2048.0 - 1, -1}; // frame height (the direct pass can't ask its input)
 		if (paramsTexture == null) {
 			paramsTexture = new NativeImageBackedTexture(() -> "velo-skybox-params", new NativeImage(12, 1, false));
 			client.getTextureManager().registerTexture(PARAMS_ID, paramsTexture);
@@ -479,7 +528,7 @@ public final class SkyboxModule extends AbstractModule implements Configurable {
 		List<ConfigField> fields = new ArrayList<>(List.of(
 				new ConfigField.ActionButtonField("Choose Skybox... (" + sky + ")", () -> openPicker(options)),
 				new ConfigField.ChoiceField("Skybox", options, () -> sky, v -> sky = v),
-				new ConfigField.ActionButtonField(importStatus.isEmpty() ? "Import Picture... (2:1 panorama or 4:3 cube cross)" : importStatus, this::importPicture),
+				new ConfigField.ActionButtonField(importStatus.isEmpty() ? "Import Picture..." : importStatus, this::importPicture),
 				new ConfigField.SliderField("Opacity", 0.1, 1.0, () -> opacity, v -> opacity = Math.round(v * 100) / 100.0, pct),
 				new ConfigField.SliderField("Brightness", 0.2, 1.0, () -> brightness, v -> brightness = Math.round(v * 100) / 100.0, pct),
 				new ConfigField.SliderField("Rotation", 0, 359, () -> rotation, v -> rotation = Math.round(v), v -> Math.round(v) + "°"),

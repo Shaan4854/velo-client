@@ -127,7 +127,13 @@ public final class KeystrokesModule extends AbstractModule implements HudModule,
 
 	private void drawKeyShape(DrawContext context, int x, int y, int kw, int kh, boolean pressed) {
 		int r6 = Math.min(6, kh / 2), r5 = Math.min(5, kh / 2), r3 = Math.min(3, kh / 2);
-		switch (style) {
+		// with a HUD Style background, the keys take its look (glass with real blur, or solid)
+		if (!pressed && (style.equals("Glass") || style.equals("Boxes") || style.equals("HUD Style")) && net.veloclient.velo.client.hud.HudLook.hasBackground()
+				&& idleColor == DEFAULT_IDLE) {
+			net.veloclient.velo.client.hud.HudLook.stylePanel(context, x, y, kw, kh, style.equals("Boxes") ? r3 : r6);
+			return;
+		}
+		switch (style.equals("HUD Style") ? "Glass" : style) {
 			case "Glass" -> {
 				// Frosted keys; a pressed key fills with the HUD accent and glows - unless this module's own colours were changed.
 				int accent = net.veloclient.velo.client.hud.HudLook.own(pressedColor, DEFAULT_PRESSED, net.veloclient.velo.client.hud.HudLook.accent());
@@ -186,7 +192,9 @@ public final class KeystrokesModule extends AbstractModule implements HudModule,
 			}
 		}
 		if (hudFont && styledLabels[i] != null) {
-			float w = labelWidths[i];
+			// measured now, inside the HUD's font scope (the cached width came from wherever the label was first made -
+			// another font's metrics put the W off centre)
+			float w = net.veloclient.velo.client.hud.HudLook.exactWidth((net.minecraft.text.Text) styledLabels[i]);
 			float s = Math.min(w > kw - 4 ? (kw - 4) / (float) w : 1f, kh < 14 ? (kh - 2) / 9f : 1f);
 			context.getMatrices().pushMatrix();
 			// TTF advances have no trailing gap (unlike Minecraft's font): centre the full width, not snapped to pixels.

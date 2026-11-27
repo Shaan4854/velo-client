@@ -49,12 +49,14 @@ public final class SettingsTabScreen extends VeloWindow implements net.veloclien
 		cardTitles.clear();
 		int x = contentX() + CARD_PAD;
 		int width = contentWidth() - CARD_PAD * 2;
-		int y = contentY() + 12;
+		int y = contentY() + 12 - settingsScroll;
 
 		y = section("Appearance", y, 1);
 		addDrawableChild(new VeloValueRow(x, y, width, ROW_HEIGHT, Text.literal("Theme"), VeloValueRow.Kind.LINK,
-				() -> net.veloclient.velo.client.theme.ThemeManager.active().name(), null,
-				b -> this.client.setScreen(new ThemeEditorScreen(this))));
+				() -> net.veloclient.velo.client.gui.widget.VeloStyle.glass() ? net.veloclient.velo.client.gui.glass.GlassPrefs.accentName()
+						: net.veloclient.velo.client.theme.ThemeManager.active().name(), null,
+				b -> this.client.setScreen(net.veloclient.velo.client.gui.widget.VeloStyle.glass()
+						? new net.veloclient.velo.client.gui.glass.ThemeScreen(this) : new ThemeEditorScreen(this))));
 		y += ROW_HEIGHT + CARD_PAD + SECTION_GAP;
 
 
@@ -70,7 +72,7 @@ public final class SettingsTabScreen extends VeloWindow implements net.veloclien
 			y += ROW_HEIGHT + CARD_PAD + SECTION_GAP;
 		}
 
-		y = section("Controls", y, 1);
+		y = section("Controls", y, 3);
 		var menuKey = net.veloclient.velo.client.keybind.VeloKeybinds.OPEN_MOD_MENU;
 		addDrawableChild(new VeloValueRow(x, y, width, ROW_HEIGHT, Text.literal("Open Velo menu"), VeloValueRow.Kind.KEY,
 				() -> menuKey.getBoundKeyLocalizedText().getString(), null,
@@ -78,6 +80,13 @@ public final class SettingsTabScreen extends VeloWindow implements net.veloclien
 					listeningForMenuKey = true;
 					layoutContent();
 				}).listening(listeningForMenuKey));
+		y += ROW_HEIGHT;
+		addDrawableChild(new VeloValueRow(x, y, width, ROW_HEIGHT, Text.literal("The menu key opens"), VeloValueRow.Kind.CHOICE,
+				net.veloclient.velo.client.gui.drawer.DrawerPrefs::mode, null, b -> net.veloclient.velo.client.gui.drawer.DrawerPrefs.cycleMode()));
+		y += ROW_HEIGHT;
+		addDrawableChild(new VeloValueRow(x, y, width, ROW_HEIGHT, Text.literal("Menu tour"), VeloValueRow.Kind.CHOICE,
+				() -> net.veloclient.velo.client.gui.drawer.DrawerPrefs.toured() ? "Show again" : "Next time the menu opens", null,
+				b -> net.veloclient.velo.client.gui.drawer.DrawerPrefs.setToured(!net.veloclient.velo.client.gui.drawer.DrawerPrefs.toured())));
 		y += ROW_HEIGHT + CARD_PAD + SECTION_GAP;
 
 		// Two columns: six switches in three rows, so the page still fits without scrolling.
@@ -108,6 +117,44 @@ public final class SettingsTabScreen extends VeloWindow implements net.veloclien
 				() -> "Open", null,
 				b -> FileManagerOpener.open(FabricLoader.getInstance().getGameDir().resolve("mods").toFile(),
 						msg -> status = Text.literal(msg))));
+		y += ROW_HEIGHT + CARD_PAD + 16;
+		// scrolling: how far the page goes, and rows out of view can't be clicked
+		maxScroll = Math.max(0, y + settingsScroll - contentBottom());
+		if (settingsScroll > maxScroll) {
+			settingsScroll = maxScroll;
+			layoutContent();
+			return;
+		}
+		for (var child : this.children()) {
+			if (child instanceof net.minecraft.client.gui.widget.ClickableWidget w) {
+				w.visible = w.getY() + w.getHeight() > contentY() && w.getY() < contentBottom();
+			}
+		}
+	}
+
+	private int settingsScroll;
+	private int maxScroll;
+
+	@Override
+	public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+		if (maxScroll > 0) {
+			settingsScroll = Math.max(0, Math.min(maxScroll, settingsScroll - (int) Math.round(verticalAmount * 24)));
+			layoutContent();
+			return true;
+		}
+		return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+	}
+
+	@Override
+	protected void renderOverlayLayer(DrawContext context, int mouseX, int mouseY, float delta) {
+		context.disableScissor();
+		if (maxScroll > 0) {
+			// a thin scroll bar on the right edge
+			int areaH = contentBottom() - contentY();
+			int barH = Math.max(20, areaH * areaH / (areaH + maxScroll));
+			int barY = contentY() + (areaH - barH) * settingsScroll / maxScroll;
+			VeloDraw.fillRounded(context, windowX + windowWidth - 7, barY, 3, barH, 1.5f, 0x40FFFFFF);
+		}
 	}
 
 	/** "Velo" / "Vanilla" switch for one of the screens Velo replaces. */
@@ -127,6 +174,8 @@ public final class SettingsTabScreen extends VeloWindow implements net.veloclien
 
 	@Override
 	protected void renderContentLayer(DrawContext context, int mouseX, int mouseY, float delta) {
+		// the page scrolls under the header: everything up to renderOverlayLayer is clipped to the content area
+		context.enableScissor(windowX, contentY() - 4, windowX + windowWidth, contentBottom());
 		for (int i = 0; i < cards.size(); i++) {
 			int[] c = cards.get(i);
 			context.drawTextWithShadow(this.textRenderer, net.veloclient.velo.client.gui.title.TitleScreenTheme.tileFont(cardTitles.get(i)),

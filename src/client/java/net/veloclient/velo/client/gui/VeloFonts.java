@@ -37,6 +37,10 @@ public final class VeloFonts {
 
 	//? if <26.1 {
 	private static final StyleSpriteSource[] UI = fonts("ui", MAX_HUD_SCALE);
+	// 2026-11-24: Velo's menus are drawn in Geist (the HUD and Name Styles keep Inter through "ui")
+	private static final StyleSpriteSource[] MENU = fonts("menu");
+	private static final StyleSpriteSource[] MENU_BOLD = fonts("menu_bold");
+	private static final StyleSpriteSource[] MENU_TITLE = fonts("menu_title");
 	private static final StyleSpriteSource[] UI_BOLD = fonts("ui_bold", MAX_HUD_SCALE);
 	private static final StyleSpriteSource[] TITLE = fonts("title");
 	private static final StyleSpriteSource[] BIG = fonts("big");
@@ -48,6 +52,9 @@ public final class VeloFonts {
 	private static final StyleSpriteSource[] MONO = fonts("mono");
 	//?} else {
 	/*private static final FontDescription[] UI = fonts("ui", MAX_HUD_SCALE);
+	private static final FontDescription[] MENU = fonts("menu");
+	private static final FontDescription[] MENU_BOLD = fonts("menu_bold");
+	private static final FontDescription[] MENU_TITLE = fonts("menu_title");
 	private static final FontDescription[] HERO = fonts("hero");
 	private static final FontDescription[] UI_SM = fonts("ui_sm");
 	private static final FontDescription[] UI_BOLD = fonts("ui_bold", MAX_HUD_SCALE);
@@ -123,6 +130,15 @@ public final class VeloFonts {
 				|| screen instanceof GameMenuScreen && VeloScreens.pause();
 	}
 
+	/**
+	 * Title and pause menu: other mods (Essential...) put their own buttons there, sized for the vanilla font - their
+	 * text keeps Inter's metrics (Geist is a bit taller and got cut off). Velo's own windows use Geist.
+	 */
+	private static boolean modsShareScreen() {
+		Screen screen = ClientCompat.currentScreen();
+		return screen instanceof TitleScreen || screen instanceof GameMenuScreen;
+	}
+
 	/** Sets the pose scale of the HUD element about to draw; returns the previous one to restore. */
 	public static float setHudPoseScale(float scale) {
 		float previous = hudPoseScale;
@@ -165,7 +181,7 @@ public final class VeloFonts {
 
 	public static StyleSpriteSource remap(StyleSpriteSource source) {
 		if (source == StyleSpriteSource.DEFAULT || StyleSpriteSource.DEFAULT.equals(source)) {
-			return menuScope() ? UI[scaleIndex()] : source;
+			return menuScope() ? (modsShareScreen() ? UI[scaleIndex()] : MENU[scaleIndex()]) : source;
 		}
 		if (source instanceof StyleSpriteSource.Font font) {
 			if (fontsBroken() && "velo-client".equals(font.id().getNamespace())) {
@@ -196,7 +212,7 @@ public final class VeloFonts {
 
 	public static FontDescription remap(FontDescription source) {
 		if (source == FontDescription.DEFAULT || FontDescription.DEFAULT.equals(source)) {
-			return menuScope() ? UI[scaleIndex()] : source;
+			return menuScope() ? (modsShareScreen() ? UI[scaleIndex()] : MENU[scaleIndex()]) : source;
 		}
 		if (source instanceof FontDescription.Resource font) {
 			if (fontsBroken() && "velo-client".equals(font.id().getNamespace())) {
@@ -236,8 +252,9 @@ public final class VeloFonts {
 			*///?}
 		}
 		return switch (id.getPath()) {
-			case "body", "ui" -> UI[hudScaleIndex()];
-			case "tile", "ui_bold" -> UI_BOLD[hudScaleIndex()];
+			case "body", "ui" -> hudDepth == 0 ? MENU[scaleIndex()] : UI[hudScaleIndex()];
+			case "tile", "ui_bold" -> hudDepth == 0 ? MENU_BOLD[scaleIndex()] : UI_BOLD[hudScaleIndex()];
+			case "menu_title" -> MENU_TITLE[scaleIndex()];
 			case "title" -> TITLE[scaleIndex()];
 			case "big" -> BIG[scaleIndex()];
 			case "display" -> DISPLAY[scaleIndex()];

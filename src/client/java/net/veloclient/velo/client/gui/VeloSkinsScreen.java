@@ -88,11 +88,13 @@ public final class VeloSkinsScreen extends VeloWindow implements net.veloclient.
 	}
 
 	private int gridX() {
-		return showcaseX() + CapeEquipScreen.SHOWCASE_WIDTH + 14;
+		showcaseX();
+		return CapeEquipScreen.rightX();
 	}
 
 	private int gridW() {
-		return contentX() + contentWidth() - gridX();
+		gridX();
+		return CapeEquipScreen.rightW();
 	}
 
 	/** The toolbar under the heading: username box, Add, then arms + Import PNG on the right. */
@@ -277,13 +279,15 @@ public final class VeloSkinsScreen extends VeloWindow implements net.veloclient.
 		// Arms for imported PNGs: a two-way segmented switch.
 		int segW = 46;
 		int sx = ix - 8 - segW * 2;
-		VeloDraw.fillRounded(context, sx, ty, segW * 2, 24, 7, 0xFF141011);
-		VeloDraw.strokeRounded(context, sx, ty, segW * 2, 24, 7, 0x17FFFFFF);
-		VeloDraw.fillRounded(context, sx + 2 + (slimImport ? segW : 0), ty + 2, segW - 4, 20, 5, VeloUi.withAlpha(MenuKit.accent(), 0x40));
+		VeloDraw.fillRounded(context, sx, ty, segW * 2, 24, 12, net.veloclient.velo.client.gui.widget.VeloStyle.glassOr(0xFF141011, 0x47000000));
+		// the pill glides between Classic and Slim (it jumped before)
+		float slimT = MenuKit.hover("skins:slimImport", slimImport);
+		VeloDraw.fillRounded(context, sx + 2 + segW * slimT, ty + 2, segW - 4, 20, 10, MenuKit.accent());
 		for (int i = 0; i < 2; i++) {
-			Text label = MenuKit.ui(i == 0 ? "Classic" : "Slim");
-			boolean on = (i == 1) == slimImport;
-			MenuKit.text(context, this.textRenderer, label, sx + i * segW + (segW - this.textRenderer.getWidth(label)) / 2, ty + 8, on ? MenuKit.TEXT : MenuKit.TEXT_3);
+			Text label = MenuKit.uiBold(i == 0 ? "Classic" : "Slim");
+			float on = i == 1 ? slimT : 1f - slimT;
+			MenuKit.text(context, this.textRenderer, label, sx + i * segW + (segW - this.textRenderer.getWidth(label)) / 2, ty + 8,
+					net.veloclient.velo.client.gui.widget.VeloAnim.lerpArgb(MenuKit.TEXT_3, MenuKit.onAccent(), on));
 			boolean slim = i == 1;
 			hits.add(new VeloUi.Hit(sx + i * segW, ty, segW, 24, () -> slimImport = slim));
 		}
@@ -320,13 +324,13 @@ public final class VeloSkinsScreen extends VeloWindow implements net.veloclient.
 			}
 			float t = MenuKit.hover(skin == null ? "skin:current" : "skin:" + skin.id(), hovered);
 			int edge = selected ? MenuKit.accent() : VeloAnim.lerpArgb(0x17FFFFFF, 0x38FFFFFF, t);
-			VeloDraw.fillRounded(context, cx, cy, cardW, CARD_H, 9, VeloAnim.lerpArgb(0xFF141011, 0xFF1A1516, t));
-			if (selected) {
+			VeloDraw.fillRounded(context, cx, cy, cardW, CARD_H, 9, net.veloclient.velo.client.gui.widget.VeloStyle.glassOr(VeloAnim.lerpArgb(0xFF141011, 0xFF1A1516, t), VeloAnim.lerpArgb(0x12FFFFFF, 0x22FFFFFF, t)));
+			if (selected && !net.veloclient.velo.client.gui.widget.VeloStyle.glass()) {
 				VeloDraw.fillRoundedGradient(context, cx, cy, cardW, CARD_H, 9, VeloUi.withAlpha(MenuKit.accent(), 0x1C), 0x00131318);
 			}
 			VeloDraw.strokeRounded(context, cx, cy, cardW, CARD_H, 9, edge);
 			// The skin, flat front view, on a soft stage.
-			VeloDraw.fillRounded(context, cx + 6, cy + 6, cardW - 12, 82, 7, 0xFF0E0E12);
+			VeloDraw.fillRounded(context, cx + 6, cy + 6, cardW - 12, 82, 7, net.veloclient.velo.client.gui.widget.VeloStyle.glassOr(0xFF0E0E12, 0x1E000000));
 			Identifier tex = skin == null ? net.veloclient.velo.client.gui.widget.SkinModelPreview.currentTexture() : texture(skin);
 			boolean slim = skin == null ? net.veloclient.velo.client.gui.widget.SkinModelPreview.currentSlim() : skin.slim();
 			if (tex != null) {
@@ -340,7 +344,7 @@ public final class VeloSkinsScreen extends VeloWindow implements net.veloclient.
 				Text tag = MenuKit.small("EQUIPPED");
 				int tw = this.textRenderer.getWidth(tag) + 10;
 				VeloDraw.fillRounded(context, cx + cardW - tw - 10, cy + 12, tw, 12, 4, VeloUi.withAlpha(MenuKit.accent(), 0xD0));
-				MenuKit.text(context, this.textRenderer, tag, cx + cardW - tw - 5, cy + 14, 0xFFFFFFFF);
+				MenuKit.text(context, this.textRenderer, tag, cx + cardW - tw - 5, cy + 14, net.veloclient.velo.client.gui.widget.VeloStyle.glassOr(0xFFFFFFFF, 0xFF141416));
 			}
 			int ay = Math.max(cy, top);
 			int ah = Math.min(cy + CARD_H, bottom) - ay;
@@ -405,8 +409,10 @@ public final class VeloSkinsScreen extends VeloWindow implements net.veloclient.
 		int y = contentY();
 		int w = CapeEquipScreen.SHOWCASE_WIDTH;
 		int h = CapeEquipScreen.stageBottom() - y;
-		VeloDraw.fillRounded(context, x, y, w, h, 10, 0xFF100D0D);
-		VeloDraw.fillRoundedGradient(context, x, y, w, h, 10, VeloUi.withAlpha(MenuKit.accent(), 0x14), 0x00111116);
+		VeloDraw.fillRounded(context, x, y, w, h, 10, net.veloclient.velo.client.gui.widget.VeloStyle.glassOr(0xFF100D0D, 0x12FFFFFF));
+		if (!net.veloclient.velo.client.gui.widget.VeloStyle.glass()) {
+			VeloDraw.fillRoundedGradient(context, x, y, w, h, 10, VeloUi.withAlpha(MenuKit.accent(), 0x14), 0x00111116);
+		}
 		VeloDraw.strokeRounded(context, x, y, w, h, 10, 0x17FFFFFF);
 		SkinLibrary.Skin skin = previewSkin();
 		boolean slim = skin == null ? net.veloclient.velo.client.gui.widget.SkinModelPreview.currentSlim() : skin.slim();

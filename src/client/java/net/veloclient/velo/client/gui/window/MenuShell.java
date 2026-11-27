@@ -40,7 +40,7 @@ public final class MenuShell {
 	/** The highlight's current y, carried across pages so it glides from the old entry to the new one. */
 	private static float pillY = Float.NaN;
 
-	private record Entry(String id, String icon, String label, boolean bottom, Function<Screen, Screen> open) {
+	public record Entry(String id, String icon, String label, boolean bottom, Function<Screen, Screen> open) {
 	}
 
 	/** Per-window drawing state: where the icons are, hover progress of their name tags. */
@@ -54,9 +54,10 @@ public final class MenuShell {
 	private MenuShell() {
 	}
 
-	private static List<Entry> entries() {
+	/** Every place the Velo menu can go (the drawer's dock and More menu use these too). */
+	public static List<Entry> entries() {
 		List<Entry> out = new ArrayList<>();
-		out.add(new Entry("modules", "grid", "Modules", false, p -> net.veloclient.velo.client.gui.ModMenuScreen.forView(false)));
+		out.add(new Entry("modules", "grid", "Modules", false, p -> new net.veloclient.velo.client.gui.drawer.VeloDrawerScreen().full()));
 		if (net.veloclient.velo.client.gui.ModMenuScreen.addonsAvailable()) {
 			out.add(new Entry("addons", "extensions", "Addons", false, p -> net.veloclient.velo.client.gui.ModMenuScreen.forView(true)));
 		}
@@ -65,7 +66,7 @@ public final class MenuShell {
 		out.add(new Entry("friends", "friends", "Friends", false, p -> new net.veloclient.velo.client.gui.FriendsScreen(p)));
 		out.add(new Entry("clips", "clips", "Clips & Screenshots", false, p -> new net.veloclient.velo.client.gui.media.MediaScreen(p)));
 		out.add(new Entry("fight_recap", "fight_recap", "Fight Recap (K)", false, p -> new net.veloclient.velo.client.gui.media.FightRecapScreen(p)));
-		out.add(new Entry("map", "map", "World Map (M)", false, p -> new net.veloclient.velo.client.worldmap.WorldMapScreen(p)));
+		out.add(new Entry("map", "map", "World Map", false, p -> new net.veloclient.velo.client.worldmap.WorldMapScreen(p)));
 		out.add(new Entry("waypoints", "waypoints", "Waypoints", false, p -> new net.veloclient.velo.client.gui.WaypointsScreen(p)));
 		out.add(new Entry("queue", "queue", "Background Queue", false, p -> new net.veloclient.velo.client.gui.BackgroundQueueSessionsScreen(p, null)));
 		out.add(new Entry("schematics", "schematics", "Schematics", false, p -> new net.veloclient.velo.client.gui.SchematicsScreen(p)));
@@ -96,7 +97,7 @@ public final class MenuShell {
 		state.boxes.clear();
 		List<Entry> rail = state.entries;
 		int a = Math.round(255 * alpha);
-		VeloDraw.fillRounded(context, x, top, RAIL, bottom - top, 9, VeloUi.withAlpha(0xFF070505, Math.round(0xE0 * alpha)));
+		VeloDraw.fillRounded(context, x, top, RAIL, bottom - top, 9, VeloUi.withAlpha(net.veloclient.velo.client.gui.widget.VeloStyle.glassOr(0xFF070505, 0xFFFFFFFF), Math.round(net.veloclient.velo.client.gui.widget.VeloStyle.glassOr(0xE0, 0x12) * alpha)));
 		long lower = rail.stream().filter(Entry::bottom).count();
 		int size = Math.max(18, Math.min(24, (bottom - top - 16 - (rail.size() + 1) * 3) / rail.size()));
 		int ty = top + 5;
@@ -132,7 +133,7 @@ public final class MenuShell {
 			int py = Math.round(pillY);
 			int s = activeBox[2];
 			// launcher rail: the page you're on = a quiet lighter square, its icon in the accent (no glow, no ring)
-			VeloDraw.fillRounded(context, activeBox[0], py, s, s, 6, VeloUi.withAlpha(0xFF1E1718, Math.round(0xFF * alpha)));
+			VeloDraw.fillRounded(context, activeBox[0], py, s, s, 6, VeloUi.withAlpha(net.veloclient.velo.client.gui.widget.VeloStyle.glassOr(0xFF1E1718, 0xFFFFFFFF), Math.round(net.veloclient.velo.client.gui.widget.VeloStyle.glassOr(0xFF, 0x2E) * alpha)));
 		}
 		for (int[] box : state.boxes) {
 			Entry item = rail.get(box[3]);
@@ -178,7 +179,7 @@ public final class MenuShell {
 			int ty = box[1] + (box[2] - 18) / 2;
 			int alpha = Math.round(255 * eased);
 			VeloDraw.shadow(context, tx, ty, w, 18, 6, 10, 3, VeloUi.withAlpha(0xFF000000, Math.round(0x80 * eased)));
-			VeloDraw.fillRounded(context, tx, ty, w, 18, 6, VeloUi.withAlpha(0xFF141011, alpha));
+			VeloDraw.fillRounded(context, tx, ty, w, 18, 6, VeloUi.withAlpha(net.veloclient.velo.client.gui.widget.VeloStyle.glassOr(0xFF141011, 0xFF141418), alpha));
 			VeloDraw.strokeRounded(context, tx, ty, w, 18, 6, VeloUi.withAlpha(MenuKit.accent(), Math.round(0x70 * eased)));
 			context.enableScissor(tx, ty, tx + w, ty + 18);
 			MenuKit.text(context, renderer, label, tx + 8, ty + 5, VeloUi.withAlpha(MenuKit.TEXT, alpha));

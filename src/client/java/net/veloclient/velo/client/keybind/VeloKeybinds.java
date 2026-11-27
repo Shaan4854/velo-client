@@ -48,12 +48,23 @@ public final class VeloKeybinds {
 	private static boolean waitForRelease;
 	private static long lastToggle;
 
-	private static int menuKeyCode() {
+	public static int menuKeyCode() {
 		//? if <26.1 {
 		return net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper.getBoundKeyOf(OPEN_MOD_MENU).getCode();
 		//?} else {
 		/*return net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper.getBoundKeyOf(OPEN_MOD_MENU).getValue();
 		*///?}
+	}
+
+	/** True until the menu key is let go after the last toggle (a held key's repeats mustn't toggle again). */
+	public static boolean waitingForRelease() {
+		return waitForRelease;
+	}
+
+	/** A screen closed itself on the menu key: the same press (and its repeats) must not open it again. */
+	public static void markToggled() {
+		lastToggle = System.currentTimeMillis();
+		waitForRelease = menuKeyCode() >= 32;
 	}
 
 	private static boolean menuKeyDown() {
@@ -84,7 +95,10 @@ public final class VeloKeybinds {
 			/*Screen current = client.gui.screen();
 			*///?}
 			if (current == null) {
-				client.setScreen(new ModMenuScreen());
+				// 2026-11-24 redesign: the glass drawer with the HUD editable right away (design/rshift-drawer)
+				client.setScreen(new net.veloclient.velo.client.gui.drawer.VeloDrawerScreen());
+			} else if (current instanceof net.veloclient.velo.client.gui.drawer.VeloDrawerScreen drawer) {
+				drawer.closeToGame();
 			} else if (current instanceof VeloWindow window) {
 				// Toggle closed: this key opens AND closes the panel, rather
 				// than only opening it and requiring Escape to get back out.

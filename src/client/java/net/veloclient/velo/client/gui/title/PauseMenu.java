@@ -114,13 +114,13 @@ public final class PauseMenu {
 	public static List<ClickableWidget> createHotspots(Screen screen) {
 		openedAt = System.nanoTime();
 		MinecraftClient client = MinecraftClient.getInstance();
-		veloMenu = new HotspotButton(Text.literal("Velo menu"), () -> client.setScreen(new ModMenuScreen()));
+		veloMenu = new HotspotButton(Text.literal("Velo menu"), () -> client.setScreen(new net.veloclient.velo.client.gui.drawer.VeloDrawerScreen()));
 		store = new HotspotButton(Text.literal("Store"), () -> client.setScreen(new StoreScreen(screen)));
 		friends = new HotspotButton(Text.literal("Friends"), () -> client.setScreen(new FriendsScreen(screen)));
 		bug = new HotspotButton(Text.literal("Report a bug"), () -> client.setScreen(new BugReportScreen(screen)));
 		tabFavorites = new HotspotButton(Text.literal("Favorites"), () -> showRecent = false);
 		tabRecent = new HotspotButton(Text.literal("Recent"), () -> showRecent = true);
-		allModules = new HotspotButton(Text.literal("All modules"), () -> client.setScreen(new ModMenuScreen()));
+		allModules = new HotspotButton(Text.literal("All modules"), () -> client.setScreen(new net.veloclient.velo.client.gui.drawer.VeloDrawerScreen().full()));
 		clip = new HotspotButton(Text.literal("Save clip"), PauseMenu::saveClip);
 		toggles.clear();
 		for (int i = 0; i < 6; i++) {
@@ -151,6 +151,19 @@ public final class PauseMenu {
 	}
 
 	private static boolean menuWasShown;
+	private static boolean skippedBlur;
+	private static final net.veloclient.velo.client.gui.glass.SharpFrame.Pacer BLUR_PACER = new net.veloclient.velo.client.gui.glass.SharpFrame.Pacer();
+
+	/**
+	 * PauseBlurPaceMixin, before the background: true = skip vanilla's blur this frame (the glass look, the menu fully
+	 * open, panels known from the last frame) - the blur runs for real at most 60 times a second.
+	 */
+	public static boolean skipBlur() {
+		boolean steady = menuWasShown && net.veloclient.velo.client.gui.widget.VeloStyle.glass() && !GLASS_RECTS.isEmpty()
+				&& System.nanoTime() - openedAt > 400_000_000L;
+		skippedBlur = steady && !BLUR_PACER.blurNow(false);
+		return skippedBlur;
+	}
 
 	/**
 	 * Start of the frame: hides what we paint and lays the dim down first - under vanilla and under other mods'
@@ -160,14 +173,28 @@ public final class PauseMenu {
 		for (ClickableWidget widget : RESTYLED) {
 			widget.visible = false;
 		}
+		MenuKit.panelSink = null;
+		List<int[]> glassRects = new ArrayList<>(GLASS_RECTS);
+		GLASS_RECTS.clear();
 		if (!menuWasShown) {
 			return;
+		}
+		if (skippedBlur) {
+			// no blur this frame (SharpFrame.Pacer): the live game, and the last blurred copy behind each panel
+			skippedBlur = false;
+			for (int[] r : glassRects) {
+				net.veloclient.velo.client.gui.glass.SharpFrame.drawBlurredInside(context, width, height, r[0], r[1], r[2], r[3], r.length > 4 ? r[4] : 0);
+			}
+		} else if (net.veloclient.velo.client.gui.widget.VeloStyle.glass() && !glassRects.isEmpty()
+				&& net.veloclient.velo.client.gui.glass.SharpFrame.prepareBoth()) {
+			// the game stays sharp; only behind the panels and buttons it's frosted (rects from the last frame)
+			net.veloclient.velo.client.gui.glass.SharpFrame.drawSharpExcept(context, width, height, glassRects);
 		}
 		float open = Math.min(1f, (System.nanoTime() - openedAt) / 320_000_000f);
 		float eased = 1f - (float) Math.pow(1f - open, 3);
 		// Customize: how dark (100 = Velo's default, up to twice as dark), the tint, and the side the menu is on
 		ScreenLook.Pause look = ScreenLook.pause();
-		float k = look.dim / 100f;
+		float k = look.dim / 100f * (net.veloclient.velo.client.gui.widget.VeloStyle.glass() ? 0.45f : 1f);   // glass: the game stays visible
 		int dimA = Math.min(255, Math.round(0xD0 * eased * k));
 		int dimB = Math.min(255, Math.round(0x59 * eased * k * (k > 1f ? k : 1f)));
 		int tint = look.tint & 0xFFFFFF;
@@ -181,6 +208,9 @@ public final class PauseMenu {
 			context.fill(split, 0, width, height, (dimB << 24) | tint);
 		}
 	}
+
+	/** The glass panels and buttons drawn this frame - next frame the blur goes behind them. */
+	private static final List<int[]> GLASS_RECTS = new ArrayList<>();
 
 	/** Word colour of the menu rows (Customize), set per frame. */
 	private static int navColor = 0xFFE4E4E8;
@@ -240,6 +270,7 @@ public final class PauseMenu {
 			}
 		}
 		menuWasShown = menuShown;
+		MenuKit.panelSink = GLASS_RECTS;
 		if (!menuShown) {
 			// F3+Esc pauses without a menu: nothing of ours either.
 			hideCards();
@@ -347,6 +378,7 @@ public final class PauseMenu {
 		int colX = rightSide ? width - margin - colW : margin;
 		navColor = look.color >= 0 ? 0xFF000000 | look.color : 0xFFE4E4E8;
 		context.getMatrices().pushMatrix();
+		MenuKit.sinkOffsetX = Math.round((rightSide ? 30f : -30f) * (1f - eased));   // the blur behind a panel slides with it (VELO-183)
 		context.getMatrices().translate((rightSide ? 30f : -30f) * (1f - eased), 0f);
 		int y = top;
 		// The logo centred on the word's capitals (Sora at this size draws its caps 2..16 below y).
@@ -358,10 +390,15 @@ public final class PauseMenu {
 		int backH = compact ? 20 : 24;
 		if (back != null) {
 			place(back, colX, y, colW, backH);
+			GLASS_RECTS.add(new int[] {colX + MenuKit.sinkOffsetX, y, colW, backH, backH / 2});
 			float hover = MenuKit.hover(back, hovered(mouseX, mouseY, back));
 			int accent = MenuKit.accent();
-			VeloDraw.shadow(context, colX, y, colW, backH, 7, 10, 3, (accent & 0xFFFFFF) | 0x50000000);
-			VeloDraw.fillRounded(context, colX, y, colW, backH, 7, VeloAnim.lerpArgb(accent, VeloAnim.lerpArgb(accent, 0xFFFFFFFF, 0.12f), hover));
+			boolean glass = net.veloclient.velo.client.gui.widget.VeloStyle.glass();
+			if (!glass) {
+				VeloDraw.shadow(context, colX, y, colW, backH, 7, 10, 3, (accent & 0xFFFFFF) | 0x50000000);
+			}
+			VeloDraw.fillRounded(context, colX, y, colW, backH, glass ? backH / 2f : 7, glass ? VeloAnim.lerpArgb(accent, 0xFF000000, 0.08f * hover)
+					: VeloAnim.lerpArgb(accent, VeloAnim.lerpArgb(accent, 0xFFFFFFFF, 0.12f), hover));
 			MenuKit.icon(context, "play", colX + 9, y + (backH - 10) / 2, 10, MenuKit.onAccent());
 			MenuKit.text(context, renderer, MenuKit.uiBold(label(back)), colX + 25, y + (backH - MenuKit.H_UI) / 2, MenuKit.onAccent());
 			MenuKit.keyHint(context, renderer, "ESC", colX + colW - 9, y + (backH - MenuKit.H_MONO) / 2, (MenuKit.onAccent() & 0xFFFFFF) | 0xB0000000);
@@ -440,9 +477,17 @@ public final class PauseMenu {
 		if (leave != null) {
 			int ly = height - top - leaveH;
 			place(leave, colX, ly, colW, leaveH);
+			GLASS_RECTS.add(new int[] {colX + MenuKit.sinkOffsetX, ly, colW, leaveH, leaveH / 2});
 			float hover = MenuKit.hover(leave, hovered(mouseX, mouseY, leave));
-			VeloDraw.fillRounded(context, colX, ly, colW, leaveH, 7, VeloAnim.lerpArgb(0x00000000, 0x24FF5A5F, hover));
-			VeloDraw.strokeRounded(context, colX, ly, colW, leaveH, 7, VeloAnim.lerpArgb(0x59FF5A5F, 0xFFFF5A5F, hover));
+			if (net.veloclient.velo.client.gui.widget.VeloStyle.glass()) {
+				// glass pill; it only warms up red when you point at it
+				// clearly a button, even over the blur: a red-tinted pill with a soft edge, warmer on hover
+				VeloDraw.fillRounded(context, colX, ly, colW, leaveH, leaveH / 2f, VeloAnim.lerpArgb(0xCC2A1618, 0xE0442024, hover));
+				VeloDraw.strokeRounded(context, colX, ly, colW, leaveH, leaveH / 2f, 1f, VeloAnim.lerpArgb(0x55FF5A5F, 0xAAFF5A5F, hover));
+			} else {
+				VeloDraw.fillRounded(context, colX, ly, colW, leaveH, 7, VeloAnim.lerpArgb(0x00000000, 0x24FF5A5F, hover));
+				VeloDraw.strokeRounded(context, colX, ly, colW, leaveH, 7, VeloAnim.lerpArgb(0x59FF5A5F, 0xFFFF5A5F, hover));
+			}
 			Text label = MenuKit.uiBold(label(leave));
 			MenuKit.text(context, renderer, label, colX + (colW - MenuKit.width(renderer, label)) / 2, ly + (leaveH - MenuKit.H_UI) / 2, MenuKit.RED_TEXT);
 		}
@@ -455,6 +500,7 @@ public final class PauseMenu {
 		}
 
 		context.getMatrices().popMatrix();
+		MenuKit.sinkOffsetX = 0;
 
 		// ---- Right column: cards ----
 		int cardW = clamp(Math.round(width * 0.26f), 160, 210);
@@ -482,6 +528,7 @@ public final class PauseMenu {
 			return;
 		}
 		context.getMatrices().pushMatrix();
+		MenuKit.sinkOffsetX = Math.round((rightSide ? -30f : 30f) * (1f - eased));
 		context.getMatrices().translate((rightSide ? -30f : 30f) * (1f - eased), 0f);
 		int cy = top;
 		cy = serverCard(context, renderer, cardX, cy, cardW);
@@ -522,6 +569,7 @@ public final class PauseMenu {
 			clip.place(0, 0, 0, 0, false);
 		}
 		context.getMatrices().popMatrix();
+		MenuKit.sinkOffsetX = 0;
 	}
 
 	/** A row's words: the real button's label, also through a stand-in. */
@@ -630,10 +678,16 @@ public final class PauseMenu {
 		Text rec = MenuKit.uiBold("Recent");
 		int favW = MenuKit.width(renderer, fav) + 14;
 		int recW = MenuKit.width(renderer, rec) + 14;
-		VeloDraw.fillRounded(context, tx, ty, favW + recW + 4, 16, 5, 0x0DFFFFFF);
-		VeloDraw.fillRounded(context, showRecent ? tx + 2 + favW : tx + 2, ty + 2, showRecent ? recW : favW, 12, 4, 0xFF2A2A32);
-		MenuKit.text(context, renderer, fav, tx + 2 + 7, ty + 4, showRecent ? 0xFF9D9DA8 : MenuKit.TEXT);
-		MenuKit.text(context, renderer, rec, tx + 2 + favW + 7, ty + 4, showRecent ? MenuKit.TEXT : 0xFF9D9DA8);
+		boolean glass = net.veloclient.velo.client.gui.widget.VeloStyle.glass();
+		VeloDraw.fillRounded(context, tx, ty, favW + recW + 4, 16, glass ? 8 : 5, glass ? 0x47000000 : 0x0DFFFFFF);
+		// the pill glides to the picked tab (it jumped before)
+		float t = MenuKit.hover("pause:recentTab", showRecent);
+		float pillX = tx + 2 + favW * t;
+		float pillW = favW + (recW - favW) * t;
+		VeloDraw.fillRounded(context, pillX, ty + 2, pillW, 12, glass ? 6 : 4, glass ? MenuKit.accent() : 0xFF2A2A32);
+		int on = glass ? MenuKit.onAccent() : MenuKit.TEXT;
+		MenuKit.text(context, renderer, fav, tx + 2 + 7, ty + 4, net.veloclient.velo.client.gui.widget.VeloAnim.lerpArgb(on, 0xFF9D9DA8, t));
+		MenuKit.text(context, renderer, rec, tx + 2 + favW + 7, ty + 4, net.veloclient.velo.client.gui.widget.VeloAnim.lerpArgb(0xFF9D9DA8, on, t));
 		tabFavorites.place(tx + 2, ty, favW, 16, true);
 		tabRecent.place(tx + 2 + favW, ty, recW, 16, true);
 		recordButtons(context, renderer, tx + favW + recW + 10, x + w - 8, ty, mouseX, mouseY);

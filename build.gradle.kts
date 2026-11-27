@@ -11,7 +11,10 @@ group = property("mod.group") as String
 // Dev build (./build-dev.sh or -PveloDev=true): unreleased features from src/dev ride inside the client jar, which is
 // versioned "<version>-dev" so it can never be mistaken for a release. Production builds never see src/dev.
 val veloDev = (findProperty("veloDev") as String?)?.toBoolean() == true
-version = "${property("mod.version")}${if (veloDev) "-dev" else ""}+${sc.current.version}"
+// Tester builds (CI passes -PtesterVersion=1.6.0.3 from the tag): the jar and the Fabric mod version carry the tester
+// build, so 1.6.0.1 and 1.6.0.3 are told apart in the file name, the mod list, crash reports and the in-game Tester screen.
+val testerVersion = (findProperty("testerVersion") as String?)?.takeIf { it.isNotBlank() }
+version = "${testerVersion ?: property("mod.version")}${if (veloDev) "-dev" else ""}+${sc.current.version}"
 
 base {
 	archivesName.set(property("mod.id") as String)
@@ -123,6 +126,10 @@ dependencies {
 	"clientCompileOnly"("de.maxhenkel.voicechat:voicechat-api:2.6.27")
 	// Velo Shaders' shadow pass draws Sodium's chunk meshes a second time from the sun, so it compiles
 	// against Sodium's renderer (compile-only: Sodium itself comes with the launcher's profiles).
+	if (sc.current.version == "1.21.11") {
+		// Velo Turbo's Sodium tweaks on 1.21.11 (the build the launcher installs there)
+		modCompileOnly("maven.modrinth:sodium:mc1.21.11-0.8.15-beta.1-fabric")
+	}
 	if (sc.current.version == "26.2") {
 		modCompileOnly("maven.modrinth:sodium:mc26.2-0.9.2-fabric")
 	}

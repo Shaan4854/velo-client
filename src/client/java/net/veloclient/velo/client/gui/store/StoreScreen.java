@@ -206,7 +206,7 @@ public final class StoreScreen extends VeloWindow {
 		if (index >= TABS.length) {
 			return EXTRA_PAGES.get(index - TABS.length).badge();
 		}
-		return index == Page.WEAR.ordinal() ? "NEW" : null;
+		return null;   // no NEW tags: they crowded the header
 	}
 
 	/** The Store's own tab on show, or null while an added one is open. */
@@ -242,10 +242,31 @@ public final class StoreScreen extends VeloWindow {
 		StoreCard.coin(context, coinsX + 11f, y + h / 2f, 5f);
 		MenuKit.text(context, this.textRenderer, amount, coinsX + 22, y + (h - 8) / 2, 0xFFFFD56A);
 		MenuKit.text(context, this.textRenderer, plus, coinsX + coinsW - 8 - this.textRenderer.getWidth(plus), y + (h - 8) / 2, MenuKit.accentText());
+		// Free coins: daily reward + quests, gold when something is ready to claim (owner 2026-11-24: nobody found them)
+		int ready = readyRewards();
+		Text free = MenuKit.uiBold(ready > 0 ? "\u2605 " + ready + " ready" : "\u2605 Free coins");
+		freeW = 8 + this.textRenderer.getWidth(free) + 8;
+		freeX = coinsX - 8 - freeW;
+		boolean freeHover = MenuKit.inside(mouseX, mouseY, freeX, y, freeW, h);
+		if (ready > 0) {
+			float pulse = (float) (0.5 + 0.5 * Math.sin(System.nanoTime() / 2.5e8));
+			VeloDraw.fillRounded(context, freeX, y, freeW, h, 6, freeHover ? 0xFFFFD56A : lerpArgb(0xFFF7C04A, 0xFFFFD56A, pulse));
+			MenuKit.text(context, this.textRenderer, free, freeX + 8, y + (h - 8) / 2, 0xFF1A1406);
+		} else {
+			VeloDraw.fillRounded(context, freeX, y, freeW, h, 6, freeHover ? 0x33F7C04A : 0x1AF7C04A);
+			VeloDraw.strokeRounded(context, freeX, y, freeW, h, 6, 0x59F7C04A);
+			MenuKit.text(context, this.textRenderer, free, freeX + 8, y + (h - 8) / 2, 0xFFFFD56A);
+		}
 		// My Locker: where you equip what you own.
 		Text locker = MenuKit.ui("My Locker");
 		lockerW = 8 + 10 + 4 + this.textRenderer.getWidth(locker) + 8;
-		lockerX = coinsX - 8 - lockerW;
+		lockerX = freeX - 8 - lockerW;
+		if (lockerX < headerTabsEnd() + 10) {
+			// the tabs need the room: just the icon
+			locker = Text.empty();
+			lockerW = 26;
+			lockerX = freeX - 8 - lockerW;
+		}
 		boolean lockerHover = MenuKit.inside(mouseX, mouseY, lockerX, y, lockerW, h);
 		VeloDraw.fillRounded(context, lockerX, y, lockerW, h, 6, lockerHover ? 0x1AFFFFFF : 0x0DFFFFFF);
 		VeloDraw.strokeRounded(context, lockerX, y, lockerW, h, 6, lockerHover ? 0x38FFFFFF : 0x17FFFFFF);
@@ -264,12 +285,17 @@ public final class StoreScreen extends VeloWindow {
 			MenuKit.icon(context, "link", discordX + 8, y + 4, 10, 0xFFFFFFFF);
 			MenuKit.text(context, this.textRenderer, discord, discordX + 22, y + (h - 8) / 2, 0xFFFFFFFF);
 		}
-		// Owner panel, for owners (the server checks every call anyway).
+		// Owner panel, for owners (the server checks every call anyway) - just its icon when the tabs need the room.
 		ownerW = 0;
 		if (StoreClient.isOwner()) {
 			Text owner = MenuKit.ui("Owner panel");
 			ownerW = 8 + 10 + 4 + this.textRenderer.getWidth(owner) + 8;
 			ownerX = discordX - 8 - ownerW;
+			if (ownerX < headerTabsEnd() + 10) {
+				owner = Text.empty();
+				ownerW = 26;
+				ownerX = discordX - 8 - ownerW;
+			}
 			boolean ownerHover = MenuKit.inside(mouseX, mouseY, ownerX, y, ownerW, h);
 			VeloDraw.fillRounded(context, ownerX, y, ownerW, h, 6, ownerHover ? 0x1AFFFFFF : 0x0DFFFFFF);
 			VeloDraw.strokeRounded(context, ownerX, y, ownerW, h, 6, ownerHover ? 0x38FFFFFF : 0x17FFFFFF);
@@ -279,10 +305,15 @@ public final class StoreScreen extends VeloWindow {
 	}
 
 	@Override
+	protected int headerExtrasLeft() {
+		return lockerX > 0 ? lockerX : headerRight() - 320;
+	}
+
+	@Override
 	protected boolean headerClick(int mouseX, int mouseY) {
 		int h = 18;
 		int y = windowY + (HEADER_HEIGHT - h) / 2;
-		if (MenuKit.inside(mouseX, mouseY, coinsX, y, coinsW, h)) {
+		if (MenuKit.inside(mouseX, mouseY, coinsX, y, coinsW, h) || MenuKit.inside(mouseX, mouseY, freeX, y, freeW, h)) {
 			this.client.setScreen(new BuyCoinsScreen(this));
 			return true;
 		}
@@ -621,35 +652,86 @@ public final class StoreScreen extends VeloWindow {
 		}, () -> this.client.setScreen(new BundleScreen(this, bundle)));
 	}
 
-	/** Bundle card: pictures of what's in it on the left, name, count and price on the right. */
+	/**
+	 * Bundle card (2026-11-26 redesign, owner: "sieht kacke aus"): the items as big tiles - across the top on a tall card,
+	 * in a row on the left of a flat one - then the name, how many items, and Owned or the price as a chip.
+	 */
 	private void paintBundle(DrawContext context, StoreClient.Bundle bundle, int x, int y, int w, int h) {
-		int size = Math.min(26, (h - 20) / 2);
-		int shown = Math.min(4, bundle.items().size());
-		for (int i = 0; i < shown; i++) {
-			StoreItems.drawArt(context, bundle.items().get(i), x + 8 + i % 2 * (size + 4), y + 8 + i / 2 * (size + 4), size);
+		List<String> items = bundle.items();
+		int n = Math.max(1, Math.min(3, items.size()));
+		int pad = 8;
+		int gap = 5;
+		boolean tall = h >= 110;
+		int tile;
+		int textX;
+		int nameY;
+		int textW;
+		if (tall) {
+			tile = Math.max(16, Math.min((w - 2 * pad - (n - 1) * gap) / n, h - 46));
+			int rowW = n * tile + (n - 1) * gap;
+			int rx = x + (w - rowW) / 2;
+			for (int i = 0; i < n && i < items.size(); i++) {
+				StoreItems.drawArt(context, items.get(i), rx + i * (tile + gap), y + pad, tile);
+			}
+			moreBadge(context, items.size() - n, rx + rowW, y + pad);
+			textX = x + pad + 2;
+			nameY = y + pad + tile + 8;
+			textW = w - 2 * pad - 4;
+		} else {
+			tile = Math.max(16, h - 2 * pad);
+			for (int i = 0; i < n && i < items.size(); i++) {
+				StoreItems.drawArt(context, items.get(i), x + pad + i * (tile + gap), y + pad, tile);
+			}
+			moreBadge(context, items.size() - n, x + pad + n * (tile + gap) - gap, y + pad);
+			textX = x + pad + n * (tile + gap) + 6;
+			nameY = y + (h - 34) / 2;
+			textW = x + w - pad - textX;
 		}
-		int tx = x + 8 + 2 * (size + 4) + 6;
-		int tw = x + w - 8 - tx;
-		MenuKit.text(context, this.textRenderer, MenuKit.small(bundle.items().size() + " ITEMS"), tx, y + 9, MenuKit.accentText());
-		MenuKit.text(context, this.textRenderer, MenuKit.fit(this.textRenderer, MenuKit.uiBold(bundle.name()), tw), tx, y + 19, MenuKit.TEXT);
+		MenuKit.text(context, this.textRenderer, MenuKit.fit(this.textRenderer, MenuKit.uiBold(bundle.name()), textW), textX, nameY, MenuKit.TEXT);
+		int metaY = nameY + 14;
+		Text meta = MenuKit.small(items.size() + " ITEMS");
+		MenuKit.text(context, this.textRenderer, meta, textX, metaY + 2, MenuKit.TEXT_3);
+		// the chip: Owned, or the price (and the saving)
 		int owned = StoreItems.ownedCount(bundle);
-		int py = y + h - 18;
-		if (owned == bundle.items().size()) {
-			MenuKit.text(context, this.textRenderer, MenuKit.ui("Owned"), tx, py, MenuKit.GREEN);
+		int chipRight = tall ? x + w - pad - 2 : textX + textW;
+		int chipY = tall ? metaY - 2 : metaY + 12;
+		if (owned == items.size()) {
+			Text label = MenuKit.uiBold("Owned");
+			int cw = this.textRenderer.getWidth(label) + 22;
+			int cx = tall ? chipRight - cw : textX;
+			VeloDraw.fillRounded(context, cx, chipY, cw, 13, 6, 0x2A3DDC97);
+			MenuKit.icon(context, "d_check", cx + 5, chipY + 3, 7, MenuKit.GREEN);
+			MenuKit.text(context, this.textRenderer, label, cx + 15, chipY + 3, MenuKit.GREEN);
 			return;
 		}
 		int separate = StoreItems.separatePrice(bundle);
 		int price = bundle.price() >= 0 ? bundle.price() : separate;
-		StoreCard.coin(context, tx + 4f, py + 3.5f, 3.6f);
 		Text p = MenuKit.uiBold(String.format(Locale.ROOT, "%,d", price));
-		MenuKit.text(context, this.textRenderer, p, tx + 10, py, 0xFFFFD56A);
-		if (bundle.price() >= 0 && separate > bundle.price()) {
-			int sx = tx + 10 + this.textRenderer.getWidth(p) + 6;
-			Text save = MenuKit.small("-" + Math.round(100.0 * (separate - bundle.price()) / separate) + "%");
-			int sw = this.textRenderer.getWidth(save) + 8;
-			VeloDraw.fillRounded(context, sx, py - 1, sw, 10, 3, 0x333DDC97);
-			MenuKit.text(context, this.textRenderer, save, sx + 4, py + 1, MenuKit.GREEN);
+		Text save = bundle.price() >= 0 && separate > bundle.price()
+				? MenuKit.small("-" + Math.round(100.0 * (separate - bundle.price()) / separate) + "%") : null;
+		int pw = this.textRenderer.getWidth(p) + 20;
+		int sw = save == null ? 0 : this.textRenderer.getWidth(save) + 10;
+		int total = pw + (save == null ? 0 : sw + 4);
+		int cx = tall ? chipRight - total : textX;
+		VeloDraw.fillRounded(context, cx, chipY, pw, 13, 6, 0x26FFD56A);
+		StoreCard.coin(context, cx + 7f, chipY + 6.5f, 3.4f);
+		MenuKit.text(context, this.textRenderer, p, cx + 13, chipY + 3, 0xFFFFD56A);
+		if (save != null) {
+			int sx = cx + pw + 4;
+			VeloDraw.fillRounded(context, sx, chipY, sw, 13, 6, 0x333DDC97);
+			MenuKit.text(context, this.textRenderer, save, sx + 5, chipY + 4, MenuKit.GREEN);
 		}
+	}
+
+	/** "+2" on the last tile when a bundle has more items than tiles. */
+	private void moreBadge(DrawContext context, int more, int rightX, int topY) {
+		if (more <= 0) {
+			return;
+		}
+		Text t = MenuKit.small("+" + more);
+		int bw = this.textRenderer.getWidth(t) + 8;
+		VeloDraw.fillRounded(context, rightX - bw - 3, topY + 3, bw, 11, 5, 0xCC0E0E12);
+		MenuKit.text(context, this.textRenderer, t, rightX - bw + 1, topY + 5, MenuKit.TEXT);
 	}
 
 	/** The welcome gift: pick any one cosmetic for free - opens the capes (every item's button says "Claim free"). */
@@ -746,7 +828,7 @@ public final class StoreScreen extends VeloWindow {
 		List<StoreClient.Bundle> bundles = StoreItems.bundles();
 		int columns = usable >= 560 ? 3 : 2;
 		int w = (usable - (columns - 1) * GAP) / columns;
-		int h = BUNDLE_H + 16;
+		int h = 132;   // tall cards: the items as big tiles across the top
 		List<int[]> spots = new java.util.ArrayList<>();
 		for (int i = 0; i < bundles.size(); i++) {
 			addRegionRow(bundleCard(bundles.get(i), w, h), spots, cx + i % columns * (w + GAP), i / columns * (h + GAP));
@@ -1053,6 +1135,28 @@ public final class StoreScreen extends VeloWindow {
 		if (!discordError.isEmpty()) {
 			MenuKit.text(context, this.textRenderer, MenuKit.fit(this.textRenderer, MenuKit.ui(discordError), cw - 36), tx, bottom, MenuKit.RED_TEXT);
 		}
+	}
+
+	private int freeX;
+	private int freeW;
+
+	/** Daily reward + quests that can be claimed right now. */
+	private static int readyRewards() {
+		StoreClient.Rewards r = StoreClient.rewards();
+		if (r == null) {
+			return 0;
+		}
+		int n = r.loginClaimable() ? 1 : 0;
+		for (StoreClient.Quest q : r.quests()) {
+			if (q.claimable()) {
+				n++;
+			}
+		}
+		return n;
+	}
+
+	private static int lerpArgb(int a, int b, float t) {
+		return net.veloclient.velo.client.gui.widget.VeloAnim.lerpArgb(a, b, t);
 	}
 
 	private static String balanceText() {

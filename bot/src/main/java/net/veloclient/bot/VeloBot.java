@@ -78,7 +78,10 @@ public final class VeloBot extends ListenerAdapter {
 		VeloBot bot = new VeloBot(config, server);
 		// MESSAGE_CONTENT (a privileged intent - switch it on in the Discord developer portal) lets ticket transcripts include what was said.
 		JDA jda = JDABuilder.createLight(token, GatewayIntent.GUILD_MESSAGES, GatewayIntent.MESSAGE_CONTENT, GatewayIntent.GUILD_MEMBERS)
-				.setMemberCachePolicy(MemberCachePolicy.NONE).setActivity(Activity.playing("Velo Client")).addEventListeners(bot).build();
+				.setMemberCachePolicy(MemberCachePolicy.NONE)
+				// forum tags (Done / Declined / Launcher...) - the light builder leaves them out, the forum sync needs them
+				.enableCache(net.dv8tion.jda.api.utils.cache.CacheFlag.FORUM_TAGS)
+				.setActivity(Activity.playing("Velo Client")).addEventListeners(bot).build();
 		jda.awaitReady();
 		bot.registerCommands(jda, env("DISCORD_GUILD_ID", null));
 		bot.vip = new VipSync(jda, config, bot.server);
@@ -90,6 +93,14 @@ public final class VeloBot extends ListenerAdapter {
 		// The staff panel (staff.velo-client.com) reaches tickets and staff roles through the Velo server and this local API.
 		new StaffBridge(jda, config, bot.tickets, bot.staff, adminToken).start(env("BOT_BRIDGE_BIND", "127.0.0.1"),
 				Integer.parseInt(env("BOT_BRIDGE_PORT", "8792")));
+		// The feedback forums -> YouTrack (youtrack.velo-client.com, project VELO) and back
+		String youtrackToken = env("YOUTRACK_TOKEN", null);
+		if (youtrackToken != null) {
+			ForumSync forums = new ForumSync(jda, new YouTrackClient(env("YOUTRACK_URL", "http://127.0.0.1:8180"), youtrackToken,
+					env("YOUTRACK_PROJECT", "VELO"), env("YOUTRACK_ASSIGNEE", "admin")), env("DISCORD_GUILD_ID", ""), Path.of(env("BOT_DATA_DIR", "bot-data")));
+			jda.addEventListener(forums);
+			forums.start();
+		}
 		System.out.println("Velo bot online as " + jda.getSelfUser().getName());
 		// Partner servers add the bot with no permissions at all - it's only there to be seen (HomeGuild keeps it idle there).
 		System.out.println("Partner invite (no permissions): https://discord.com/oauth2/authorize?client_id="
@@ -109,6 +120,7 @@ public final class VeloBot extends ListenerAdapter {
 		commands.add(Commands.slash("link", "Link your Minecraft account with the code from Velo Client (only you see the answer)")
 				.addOption(OptionType.STRING, "code", "The code Velo Client shows you", true));
 		commands.add(Commands.slash("unlink", "Unlink your Minecraft account (the Velo Neon cloak is removed)"));
+		commands.add(Commands.slash("tester", "Testers: get the Velo Client Tester launcher (only you see the links)"));
 		commands.add(Commands.slash("roles", "Ping roles members can pick").setDefaultPermissions(admin).addSubcommands(
 				new SubcommandData("add", "Put a role on the panel").addOptions(new OptionData(OptionType.ROLE, "role", "The role to give", true),
 						new OptionData(OptionType.STRING, "label", "Button text, e.g. News", true),
@@ -213,6 +225,61 @@ public final class VeloBot extends ListenerAdapter {
 		return option;
 	}
 
+	/** Testers get personal download links for the newest Velo Client Tester build (24 h, only for them). */
+	private void testerCommand(SlashCommandInteractionEvent event) {
+		boolean hasRole = event.getMember() != null && config.testerRoleId != null
+				&& event.getMember().getRoles().stream().anyMatch(r -> r.getId().equals(config.testerRoleId));
+		if (!hasRole) {
+			event.reply("The Velo Client Tester launcher is for members with the Tester role.").setEphemeral(true).queue();
+			return;
+		}
+		event.deferReply(true).queue();
+		// every follow-up too: only the first one inherits the private reply, the second (mod jar links) was posted for everyone
+		event.getHook().setEphemeral(true);
+		if (vip != null) {
+			vip.runNow(); // a brand-new tester: sync the role to the server first
+		}
+		new Thread(() -> {
+			try {
+				Thread.sleep(2500);
+				com.google.gson.JsonObject res = server.testerLinks(event.getUser().getId());
+				com.google.gson.JsonObject links = res.getAsJsonObject("links");
+				if (links.isEmpty()) {
+					event.getHook().sendMessage("There's no tester build yet - you'll get one soon.").queue();
+					return;
+				}
+				StringBuilder text = new StringBuilder("**Velo Client Tester " + res.get("version").getAsString() + "** - your personal links (valid 24 h, don't share them):\n");
+				String[][] names = {{"windows", "Windows"}, {"mac-arm", "macOS (Apple Silicon)"}, {"mac-intel", "macOS (Intel)"},
+						{"linux-deb", "Linux (.deb)"}, {"linux-tar", "Linux (other distros, .tar.gz)"}};
+				text.append("\n**Tester launcher** (recommended):");
+				for (String[] n : names) {
+					if (links.has(n[0])) {
+						text.append("\n• [").append(n[1]).append("](").append(links.get(n[0]).getAsString()).append(")");
+					}
+				}
+				StringBuilder jars = new StringBuilder();
+				for (var e : links.entrySet()) {
+					if (e.getKey().startsWith("jar-")) {
+						jars.append("\n• [Minecraft ").append(e.getKey().substring(4)).append("](").append(e.getValue().getAsString()).append(")");
+					}
+				}
+				text.append("\n\nLauncher: sign in, the Tester window opens with it.");
+				event.getHook().sendMessage(text.toString()).queue();
+				if (!jars.isEmpty()) {
+					// own message: Discord stops at 2000 characters and every signed link is ~190
+					event.getHook().sendMessage("**Only the mod** (your own launcher - into your mods folder, needs Fabric API; type **/velo tester** in game "
+							+ "for the test plan and reports):" + jars).queue();
+				}
+			} catch (ServerApi.ApiException e) {
+				event.getHook().sendMessage("not-tester".equals(e.getMessage())
+						? "Link your Minecraft account first with **/link** (code from Velo Client > Settings), then try /tester again in a few minutes."
+						: "Couldn't get your links: " + e.getMessage()).queue();
+			} catch (InterruptedException ignored) {
+				// shutting down
+			}
+		}, "velo-tester-links").start();
+	}
+
 	@Override
 	public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
 		if (!HomeGuild.is(event.getGuild())) {
@@ -224,6 +291,7 @@ public final class VeloBot extends ListenerAdapter {
 			switch (event.getName()) {
 				case "link" -> linkCommand(event);
 				case "unlink" -> unlink(event);
+				case "tester" -> testerCommand(event);
 				case "roles" -> roles(event, sub);
 				case "ticket" -> ticket(event, sub);
 				case "setup" -> setup(event, sub);
@@ -565,6 +633,7 @@ public final class VeloBot extends ListenerAdapter {
 			}
 			case "webhooks" -> {
 				event.deferReply(true).queue();
+				event.getHook().setEphemeral(true);
 				StringBuilder out = new StringBuilder("Put these in the Velo server's settings (environment):\n");
 				List<Runnable> pending = new ArrayList<>();
 				int[] left = {0};

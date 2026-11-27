@@ -24,6 +24,7 @@ public final class MouseButtonsModule extends AbstractModule implements HudModul
 	public static final String STYLE_BOXES = "Boxes";
 	public static final String STYLE_TEXT = "Text";
 	public static final String STYLE_MOUSE = "Mouse";
+	public static final String STYLE_HUD = "HUD Style";
 	private static final List<String> STYLES = List.of(STYLE_BOXES, STYLE_TEXT, STYLE_MOUSE);
 
 	private static final int BOX_WIDTH = 34;
@@ -46,7 +47,8 @@ public final class MouseButtonsModule extends AbstractModule implements HudModul
 	// Off by default - the plain body box below the two buttons is mostly dead space.
 	private boolean showBodyBox = false;
 	private int pressedColor = 0xFFFF4444;
-	private int idleColor = 0xCC1E1212;
+	private static final int DEFAULT_IDLE_COLOR = 0xCC1E1212;
+	private int idleColor = DEFAULT_IDLE_COLOR;
 	private int textColor = 0xFFFFFFFF;
 
 	public MouseButtonsModule() {
@@ -83,19 +85,42 @@ public final class MouseButtonsModule extends AbstractModule implements HudModul
 	private void renderBoxes(DrawContext context, MinecraftClient client, int x, int y, boolean leftPressed, boolean rightPressed) {
 		int bodyW = BOX_WIDTH - INSET * 2;
 		int halfW = bodyW / 2;
-		context.fill(x + INSET, y + INSET, x + INSET + halfW - 1, y + INSET + TOP_HEIGHT, leftPressed ? pressedColor : idleColor);
-		context.fill(x + INSET + halfW + 1, y + INSET, x + BOX_WIDTH - INSET, y + INSET + TOP_HEIGHT, rightPressed ? pressedColor : idleColor);
-		if (showBodyBox) {
+		// with a HUD Style background the buttons take its look (glass with real blur, or solid)
+		boolean hudStyle = style.equals(STYLE_HUD) || net.veloclient.velo.client.hud.HudLook.hasBackground() && idleColor == DEFAULT_IDLE_COLOR;
+		if (hudStyle) {
+			// the HUD Style's panels (glass by default); a held button turns white
+			int lx = x + INSET;
+			int rx = x + INSET + halfW + 1;
+			int ty = y + INSET;
+			if (leftPressed) {
+				VeloDraw.fillRounded(context, lx, ty, halfW - 1, TOP_HEIGHT, 5, 0xEEFFFFFF);
+			} else {
+				net.veloclient.velo.client.hud.HudLook.stylePanel(context, lx, ty, halfW - 1, TOP_HEIGHT);
+			}
+			if (rightPressed) {
+				VeloDraw.fillRounded(context, rx, ty, halfW - 1, TOP_HEIGHT, 5, 0xEEFFFFFF);
+			} else {
+				net.veloclient.velo.client.hud.HudLook.stylePanel(context, rx, ty, halfW - 1, TOP_HEIGHT);
+			}
+		} else {
+			context.fill(x + INSET, y + INSET, x + INSET + halfW - 1, y + INSET + TOP_HEIGHT, leftPressed ? pressedColor : idleColor);
+			context.fill(x + INSET + halfW + 1, y + INSET, x + BOX_WIDTH - INSET, y + INSET + TOP_HEIGHT, rightPressed ? pressedColor : idleColor);
+		}
+		if (showBodyBox && !hudStyle) {
 			int bottomColor = (idleColor & 0x00FFFFFF) | 0x88000000;
 			context.fill(x + INSET, y + INSET + TOP_HEIGHT + 2, x + BOX_WIDTH - INSET, y + BOX_HEIGHT - INSET, bottomColor);
 		}
 		if (showCps) {
+			// centred on the font's real line height (TTF HUD fonts sat low with the pixel font's 7 px)
+			int numberY = y + INSET + (TOP_HEIGHT - net.veloclient.velo.client.hud.HudLook.lineHeight()) / 2 + 1;
 			String leftCps = String.valueOf(CpsTracker.leftCps());
 			String rightCps = String.valueOf(CpsTracker.rightCps());
+			int leftColor = hudStyle && leftPressed ? 0xFF141416 : textColor;
+			int rightColor = hudStyle && rightPressed ? 0xFF141416 : textColor;
 			net.veloclient.velo.client.hud.HudLook.draw(context, leftCps,
-					x + INSET + (halfW - net.veloclient.velo.client.hud.HudLook.measure(leftCps)) / 2, y + INSET + TOP_HEIGHT / 2 - 3, textColor);
+					x + INSET + (halfW - net.veloclient.velo.client.hud.HudLook.measure(leftCps)) / 2, numberY, leftColor);
 			net.veloclient.velo.client.hud.HudLook.draw(context, rightCps,
-					x + INSET + halfW + 2 + (halfW - net.veloclient.velo.client.hud.HudLook.measure(rightCps)) / 2, y + INSET + TOP_HEIGHT / 2 - 3, textColor);
+					x + INSET + halfW + 2 + (halfW - net.veloclient.velo.client.hud.HudLook.measure(rightCps)) / 2, numberY, rightColor);
 		}
 	}
 
@@ -136,7 +161,12 @@ public final class MouseButtonsModule extends AbstractModule implements HudModul
 		int half = MOUSE_W / 2;
 		boolean middle = middlePressed(client);
 		// Body, then each pressed button lit up by clipping the same rounded shape to its half.
-		VeloDraw.fillRounded(context, x, y, MOUSE_W, MOUSE_H, radius, idleColor);
+		boolean styled = net.veloclient.velo.client.hud.HudLook.hasBackground() && idleColor == DEFAULT_IDLE_COLOR;
+		if (styled) {
+			net.veloclient.velo.client.hud.HudLook.stylePanel(context, x, y, MOUSE_W, MOUSE_H, radius);   // the HUD Style's glass
+		} else {
+			VeloDraw.fillRounded(context, x, y, MOUSE_W, MOUSE_H, radius, idleColor);
+		}
 		if (leftPressed) {
 			context.enableScissor(x, y, x + half, y + MOUSE_SPLIT);
 			VeloDraw.fillRounded(context, x, y, MOUSE_W, MOUSE_H, radius, pressedColor);
@@ -155,7 +185,7 @@ public final class MouseButtonsModule extends AbstractModule implements HudModul
 		int wheelH = 10;
 		int wheelX = x + half - 2;
 		int wheelY = y + 4;
-		VeloDraw.fillRounded(context, wheelX - 1, wheelY - 1, wheelW + 2, wheelH + 2, 3, (idleColor & 0x00FFFFFF) | 0xFF000000);
+		VeloDraw.fillRounded(context, wheelX - 1, wheelY - 1, wheelW + 2, wheelH + 2, 3, styled ? 0x66000000 : (idleColor & 0x00FFFFFF) | 0xFF000000);
 		VeloDraw.fillRounded(context, wheelX, wheelY, wheelW, wheelH, 2, middle ? pressedColor | 0xFF000000 : 0xCCFFFFFF);
 		float glow = scrollGlow();
 		if (glow > 0f) {
@@ -165,7 +195,9 @@ public final class MouseButtonsModule extends AbstractModule implements HudModul
 			float cy = up ? wheelY - 2.5f : wheelY + wheelH + 2.5f;
 			VeloDraw.chevron(context, wheelX + wheelW / 2f, cy, 6f, 1.4f, up ? 3 : 1, color);
 		}
-		VeloDraw.strokeRounded(context, x, y, MOUSE_W, MOUSE_H, radius, 0x40FFFFFF);
+		if (!styled) {
+			VeloDraw.strokeRounded(context, x, y, MOUSE_W, MOUSE_H, radius, 0x40FFFFFF);
+		}
 		if (showCps) {
 			// CPS inside each button, beside the wheel.
 			String left = String.valueOf(CpsTracker.leftCps());
