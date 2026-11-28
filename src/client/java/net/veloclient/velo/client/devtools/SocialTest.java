@@ -303,7 +303,10 @@ public final class SocialTest {
 								now[0] = pl;
 							}
 						});
-						if (now[0] != null && now[0] != before[0]) {
+						if (!Files.exists(dir.resolve("delay-t0-" + n))) {
+							// A has not started this trial yet: whatever arrives now is older, so it becomes the reference
+							before[0] = now[0];
+						} else if (now[0] != null && now[0] != before[0]) {
 							seen = true;
 							seenAt = System.currentTimeMillis();
 							break;
