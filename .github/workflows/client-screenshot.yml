@@ -1,0 +1,137 @@
+name: Client screenshot (software GL)
+
+# Dev/test only. Boots the Velo mod client under Xvfb with Mesa software OpenGL, points it at the fork's
+# Workers backend running locally (wrangler dev), saves screenshots and logs as an artifact, and checks that the
+# offline account really signed in to the backend. Lives only on the throwaway ci/screenshot branch.
+on:
+  push:
+    branches: [ci/screenshot]   # throwaway test branch only; deleted when testing ends
+  workflow_dispatch:
+    inputs:
+      minecraft_project:
+        description: "Gradle project of the Minecraft version to run (e.g. 1.21.11)"
+        required: false
+        default: "1.21.11"
+      run_seconds:
+        description: "How long to let the client run before collecting results"
+        required: false
+        default: "420"
+
+permissions:
+  contents: read
+
+jobs:
+  shot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install display and software GL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 libgl1 mesa-utils libxrandr2 libxxf86vm1 libxcursor1 libxi6 libxinerama1 libopenal1 imagemagick x11-utils x11-apps xdotool openbox mesa-utils
+
+      - name: Start the Workers backend locally
+        working-directory: workers-backend
+        run: |
+          npm install --no-audit --no-fund
+          nohup npx wrangler dev --local --port 8787 > ../wrangler.log 2>&1 &
+          for i in $(seq 1 40); do curl -sf localhost:8787/v1/health && break; sleep 2; done
+          curl -s localhost:8787/v1/health
+
+      - name: Generate a flat world with the vanilla server (for the in-world tour)
+        timeout-minutes: 8
+        run: |
+          MC=1.21.11
+          M=$(curl -s https://piston-meta.mojang.com/mc/game/version_manifest_v2.json | jq -r --arg v "$MC" '.versions[]|select(.id==$v)|.url')
+          J=$(curl -s "$M" | jq -r '.downloads.server.url')
+          mkdir -p srv && cd srv && curl -sL -o server.jar "$J"
+          echo 'eula=true' > eula.txt
+          printf '%s\n' 'level-type=minecraft:flat' 'level-name=TourWorld' 'online-mode=false' 'spawn-protection=0' 'gamemode=creative' 'view-distance=4' 'simulation-distance=4' > server.properties
+          mkfifo cmd; (sleep 600 > cmd) &
+          timeout 300 java -Xmx1g -jar server.jar nogui < cmd > ../server-gen.log 2>&1 &
+          SP=$!
+          for i in $(seq 1 120); do grep -q 'Done (' ../server-gen.log 2>/dev/null && break; sleep 2; done
+          sleep 3; echo stop > cmd
+          for i in $(seq 1 30); do kill -0 $SP 2>/dev/null || break; sleep 1; done
+          kill $SP 2>/dev/null || true; pkill -f 'sleep 600' || true
+          tail -3 ../server-gen.log; ls TourWorld | head
+          mkdir -p ../run/saves ../1.21.11/run/saves ../versions/1.21.11/run/saves
+          cp -r TourWorld ../run/saves/TourWorld; cp -r TourWorld ../1.21.11/run/saves/TourWorld; cp -r TourWorld ../versions/1.21.11/run/saves/TourWorld
+
+      - name: Boot the client under Xvfb
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          GALLIUM_DRIVER: llvmpipe
+          MESA_GL_VERSION_OVERRIDE: "4.5"
+          MESA_GLSL_VERSION_OVERRIDE: "450"
+          DISPLAY: ":99"
+          VELO_RUN_JVM_ARGS: "-Dvelo.screenshotTour=/tmp/tour -Dvelo.screenshotTour.boot=true -Dvelo.screenshotTour.world=TourWorld -Dvelo.offlineCosmetics=true -Dvelo.ciOfflineSession=true -Xmx3g"
+        run: |
+          mkdir -p shots /tmp/tour
+          Xvfb :99 -screen 0 1280x720x24 > xvfb.log 2>&1 &
+          sleep 3
+          openbox > openbox.log 2>&1 &
+          sleep 1
+          glxinfo -B > glxinfo.txt 2>&1 || true
+          # a fresh run folder shows the accessibility onboarding screen instead of the title screen: skip it, low settings
+          mkdir -p run
+          printf '%s\n' 'onboardAccessibility:false' 'skipMultiplayerWarning:true' 'tutorialStep:none' 'joinedFirstServer:true' 'renderDistance:4' 'simulationDistance:5' 'fancyGraphics:false' 'maxFps:30' 'narrator:0' 'soundCategory_master:0.0' 'fullscreen:false' > run/options.txt
+          for d in versions/1.21.11/run 1.21.11/run 1.21.1/run run-client; do mkdir -p $d; cp run/options.txt $d/options.txt; done
+          # whole-screen shot every 30 s: works even if the in-game tour never runs
+          ( i=0; while true; do sleep 30; i=$((i+1)); for sock in /tmp/.X11-unix/X*; do n=${sock##*/X}; import -display :$n -window root shots/screen-$(printf %03d $i)-d$n.png 2>/dev/null || true; done; xwininfo -root -tree > shots/tree-$(printf %03d $i).txt 2>&1 || true; ls /tmp/tour > shots/tour-$(printf %03d $i).txt 2>&1 || true; done ) &
+          ./gradlew :${{ inputs.minecraft_project || '1.21.11' }}:runClient --no-daemon --no-configuration-cache --configure-on-demand --no-parallel -Dorg.gradle.jvmargs=-Xmx1500m > client.log 2>&1 &
+          ( while true; do echo "$(date +%T) $(curl -s -m 8 https://velo-fork.shaaanansari786.workers.dev/v1/online)" >> online-poll.log; sleep 5; done ) &
+          GRADLE=$!
+          sleep 150
+          {
+            echo '--- java processes'; pgrep -af java | cut -c1-200
+            for p in $(pgrep -f net.fabricmc.devlaunchinjector); do
+              echo "--- env of $p"; tr '\0' '\n' < /proc/$p/environ | grep -E '^(DISPLAY|LIBGL|GALLIUM|XDG_SESSION|WAYLAND)' || true
+              echo '--- x11 sockets'; ss -xp 2>/dev/null | grep -c "X11-unix" || true
+              echo '--- render thread'; jstack $p 2>/dev/null | grep -A14 '"Render thread"' | head -24 || true
+            done
+          } > diag.txt 2>&1
+          sleep $(( ${{ inputs.run_seconds || '420' }} - 150 ))
+          echo "--- online list (should contain the dev client's offline name) ---"
+          curl -s https://velo-fork.shaaanansari786.workers.dev/v1/online > online-final.json
+          grep -h '"username"' online-poll.log | tail -1 | sed 's/^[0-9:]* //' > online.json || true
+          [ -s online.json ] || cp online-final.json online.json
+          cat online.json
+          echo
+          for sock in /tmp/.X11-unix/X*; do n=${sock##*/X}; import -display :$n -window root shots/final-d$n.png || true; done; find . -name options.txt -not -path './node_modules/*' | head > shots/options-found.txt
+          kill $GRADLE 2>/dev/null || true
+          pkill -f net.fabricmc.devlaunchinjector || true
+          grep -E "Velo|offline|Offline" client.log | tail -40 || true
+          python3 - <<'PY'
+          import json, sys
+          users = json.load(open("online.json")).get("users", [])
+          print("online users:", [u["username"] for u in users])
+          sys.exit(0 if users else 1)
+          PY
+
+      - name: Collect results
+        if: always()
+        run: |
+          mkdir -p out
+          cp -r shots out/ 2>/dev/null || true
+          cp -r /tmp/tour out/tour 2>/dev/null || true
+          cp server-gen.log diag.txt client.log wrangler.log xvfb.log openbox.log glxinfo.txt online.json online-poll.log online-final.json out/ 2>/dev/null || true
+          find run -name latest.log -exec cp {} out/game-latest.log \; 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: client-screenshots
+          path: out
+          retention-days: 7

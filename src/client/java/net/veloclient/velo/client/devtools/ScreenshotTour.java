@@ -38,6 +38,27 @@ public final class ScreenshotTour {
 	private ScreenshotTour() {
 	}
 
+	private static void clickLockerFirstTile(MinecraftClient client) {
+		try {
+			var screen = client.currentScreen;
+			Class<?> click = Class.forName("net.minecraft.client.gui.Click");
+			double x = screen.width * 0.57, y = screen.height * 0.35;
+			Object ev = null;
+			for (var k : click.getConstructors()) {
+				var p = k.getParameterTypes();
+				if (p.length == 3 && p[0] == double.class) {
+					Object mi = p[2].getConstructor(int.class, int.class).newInstance(0, 0);
+					ev = k.newInstance(x, y, mi);
+					break;
+				}
+			}
+			Object r = screen.getClass().getMethod("mouseClicked", click, boolean.class).invoke(screen, ev, false);
+			VeloClient.LOGGER.info("Locker click test: clicked {},{} on {}x{} -> handled={}", (int) x, (int) y, screen.width, screen.height, r);
+		} catch (Throwable t) {
+			VeloClient.LOGGER.warn("Locker click test failed", t);
+		}
+	}
+
 	public static void initIfRequested() {
 		String target = System.getProperty("velo.screenshotTour");
 		if (target == null || target.isBlank()) {
@@ -57,6 +78,11 @@ public final class ScreenshotTour {
 	private static boolean bootDone;
 
 	private static void bootTick(MinecraftClient client) {
+		if (net.veloclient.velo.client.util.ClientCompat.currentScreen() instanceof net.minecraft.client.gui.screen.AccessibilityOnboardingScreen) {
+			// fresh run folder: skip the first-run accessibility screen so the tour reaches the title screen
+			client.setScreen(new net.minecraft.client.gui.screen.TitleScreen());
+			return;
+		}
 		if (!(net.veloclient.velo.client.util.ClientCompat.currentScreen() instanceof net.minecraft.client.gui.screen.TitleScreen)) {
 			return;
 		}
@@ -86,7 +112,13 @@ public final class ScreenshotTour {
 		}
 	}
 
+	private static int logTicks;
+
 	private static void tick(MinecraftClient client) {
+		if (++logTicks % 200 == 0) {
+			Object screen = net.veloclient.velo.client.util.ClientCompat.currentScreen();
+			VeloClient.LOGGER.info("Velo screenshot tour: tick {} screen={} player={}", logTicks, screen == null ? "none" : screen.getClass().getName(), client.player != null);
+		}
 		if (BOOT && !bootDone && client.player == null) {
 			bootTick(client);
 			return;
@@ -146,9 +178,11 @@ public final class ScreenshotTour {
 			case 640 -> shot(client, "12-settings");
 			case 645 -> client.setScreen(new net.minecraft.client.gui.screen.GameMenuScreen(true));
 			case 665 -> shot(client, "13-pause-menu");
-			case 680 -> client.setScreen(new net.veloclient.velo.client.gui.CapeEquipScreen(null));
+			case 680 -> { client.options.getGuiScale().setValue(1); client.onResolutionChanged(); client.setScreen(new net.veloclient.velo.client.gui.CapeEquipScreen(null)); }
+			case 690, 703 -> clickLockerFirstTile(client);
+			case 708 -> { VeloClient.LOGGER.info("Locker click test: equipped cloak = {}", net.veloclient.velo.client.cosmetics.CapeManager.equippedSourceItemId().orElse("none")); shot(client, "14b-locker-click-equipped"); }
 			case 710 -> shot(client, "14-capes");
-			case 715 -> client.setScreen(new net.veloclient.velo.client.gui.store.StoreScreen(null));
+			case 715 -> { client.options.getGuiScale().setValue(0); client.onResolutionChanged(); client.setScreen(new net.veloclient.velo.client.gui.store.StoreScreen(null)); }
 			case 745 -> shot(client, "15-store");
 			case 750 -> net.veloclient.velo.client.store.StoreCatalog.all().stream().findFirst().ifPresent(item ->
 					client.setScreen(new net.veloclient.velo.client.gui.store.StoreItemDetailScreen(null, item)));

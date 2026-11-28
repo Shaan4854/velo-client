@@ -190,6 +190,7 @@ public final class VeloClientMod implements ClientModInitializer {
 		net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents.CLIENT_STOPPING.register(client -> net.veloclient.velo.client.network.VeloServerClient.stopOnGameExit());
 		AnticheatTestController.initIfEnabled();
 		net.veloclient.velo.client.devtools.ScreenshotTour.initIfRequested();
+		net.veloclient.velo.client.devtools.SocialTest.initIfRequested();
 		net.veloclient.velo.client.devtools.CosmeticsBench.register();
 		net.veloclient.velo.client.devtools.CrowdBench.register();
 		net.veloclient.velo.client.devtools.SpawnBench.register();

@@ -1,0 +1,109 @@
+name: Two-client social test (live Worker)
+
+# Dev/test only, throwaway ci/screenshot branch. Two real Velo game clients on one runner (two Xvfb displays) against the
+# LIVE Worker: friend request, accept, DM, party invite/join, party chat, state re-read. Steps log SOCIALTEST lines.
+on:
+  push:
+    branches: [ci/screenshot, ci/realtime]
+    paths: [".github/workflows/social-two-client.yml"]
+  workflow_dispatch:
+    inputs:
+      noRealtime:
+        description: "true = polling only (baseline), false = WebSocket"
+        default: "false"
+
+permissions:
+  contents: read
+
+jobs:
+  two:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+      - name: Install display and software GL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 libgl1 mesa-utils libxrandr2 libxxf86vm1 libxcursor1 libxi6 libxinerama1 libopenal1 imagemagick x11-utils openbox
+      - name: Run two clients
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          GALLIUM_DRIVER: llvmpipe
+          MESA_GL_VERSION_OVERRIDE: "4.5"
+          MESA_GLSL_VERSION_OVERRIDE: "450"
+          VELO_RUN_JVM_ARGS: "-Dvelo.socialTest=A -Dvelo.socialTest.dir=/tmp/st -Dvelo.offlineCosmetics=true -Dvelo.ciOfflineSession=true -Dvelo.noRealtime=${{ inputs.noRealtime || 'false' }} -Xmx2g"
+        run: |
+          mkdir -p /tmp/st /tmp/gameB
+          Xvfb :99 -screen 0 1280x720x24 > xvfb99.log 2>&1 &
+          Xvfb :98 -screen 0 1280x720x24 > xvfb98.log 2>&1 &
+          sleep 3
+          printf '%s\n' 'onboardAccessibility:false' 'skipMultiplayerWarning:true' 'tutorialStep:none' 'joinedFirstServer:true' 'renderDistance:2' 'simulationDistance:5' 'fancyGraphics:false' 'maxFps:20' 'narrator:0' 'soundCategory_master:0.0' 'fullscreen:false' > /tmp/options.txt
+          for d in run versions/1.21.11/run 1.21.11/run /tmp/gameB; do mkdir -p $d; cp /tmp/options.txt $d/options.txt; done
+          DISPLAY=:99 ./gradlew :1.21.11:runClient --no-daemon --no-configuration-cache --configure-on-demand --no-parallel -Dorg.gradle.jvmargs=-Xmx1200m > clientA.log 2>&1 &
+          PID=""
+          for i in $(seq 1 150); do PID=$(pgrep -f net.fabricmc.devlaunchinjector | head -1); [ -n "$PID" ] && break; sleep 2; done
+          echo "client A java pid: $PID"
+          [ -n "$PID" ] || { echo "client A never started"; tail -30 clientA.log; exit 1; }
+          cat /proc/$PID/cmdline | tr '\0' '\n' > cmdA.txt
+          python3 - <<'PY'
+          import random, shlex
+          a = open("cmdA.txt").read().split("\n")
+          if a and a[-1] == "": a.pop()
+          out = []
+          skip = 0
+          for i, x in enumerate(a):
+              if skip: skip -= 1; continue
+              if x.startswith("-Dvelo.socialTest="): out.append("-Dvelo.socialTest=B"); continue
+              if x == "--uuid": skip = 1; continue
+              if x == "--username": out += [x, "Player%d" % random.randint(1000, 9999)]; skip = 1; continue
+              if x == "--gameDir": out += [x, "/tmp/gameB"]; skip = 1; continue
+              out.append(x)
+          if "--username" not in out: out += ["--username", "Player%d" % random.randint(1000, 9999)]
+          open("runB.sh", "w").write("cd /tmp/gameB && exec " + " ".join(shlex.quote(x) for x in out) + "\n")
+          print("args with username/gameDir/uuid in A:", [x for x in a if x in ("--username", "--gameDir", "--uuid")])
+          PY
+          grep -c . runB.sh
+          sleep 20
+          DISPLAY=:98 bash runB.sh > clientB.log 2>&1 &
+          for i in $(seq 1 100); do
+            [ -f /tmp/st/p2-A ] && [ -f /tmp/st/p2-B ] && break
+            sleep 5
+          done
+          echo "phase 2 done or timed out; asking client B to quit gracefully"
+          touch /tmp/st/quit-B
+          for i in $(seq 1 30); do pgrep -f 'velo.socialTest=B ' > /dev/null || { echo "B exited gracefully after ~$((i*3))s"; break; }; sleep 3; done
+          pgrep -f 'velo.socialTest=B ' > /dev/null && { echo "B still running after 90s: hard kill fallback"; pkill -9 -f 'velo.socialTest=B ' || true; }
+          sleep 2
+          sed -i 's/velo.socialTest=B /velo.socialTest=B2 /' runB.sh
+          DISPLAY=:98 bash runB.sh > clientB2.log 2>&1 &
+          for i in $(seq 1 100); do
+            [ -f /tmp/st/p3-A ] && [ -f /tmp/st/done-B2 ] && break
+            sleep 5
+          done
+          echo "hard-killing client B2"
+          pkill -9 -f 'velo.socialTest=B2' || true
+          date +%s > /tmp/st/hardkill-at
+          for i in $(seq 1 60); do
+            [ -f /tmp/st/done-A ] && break
+            sleep 5
+          done
+                    echo "--- SOCIALTEST A"; grep -h SOCIALTEST clientA.log | sed 's/^.*SOCIALTEST/SOCIALTEST/' || true
+          echo "--- SOCIALTEST B"; grep -h SOCIALTEST clientB.log clientB2.log | sed 's/^.*SOCIALTEST/SOCIALTEST/' || true
+          for s in :99 :98; do import -display $s -window root shot${s#:}.png 2>/dev/null || true; done
+          pkill -f net.fabricmc.devlaunchinjector || true
+          [ -f /tmp/st/done-A ] && [ -f /tmp/st/done-B2 ] && ! grep -h SOCIALTEST clientA.log clientB.log clientB2.log | grep -q " FAIL "
+      - name: Collect
+        if: always()
+        run: |
+          mkdir -p out; cp clientA.log clientB.log clientB2.log cmdA.txt runB.sh xvfb99.log xvfb98.log shot*.png out/ 2>/dev/null || true
+          cp -r /tmp/st out/st 2>/dev/null || true
+          grep -h SOCIALTEST clientA.log clientB.log clientB2.log | sed 's/^.*SOCIALTEST/SOCIALTEST/' > out/socialtest.txt || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: two-client-results
+          path: out

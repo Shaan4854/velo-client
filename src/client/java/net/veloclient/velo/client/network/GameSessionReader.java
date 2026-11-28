@@ -23,7 +23,7 @@ final class GameSessionReader {
 	 */
 	static boolean isOfflineSession() {
 		try {
-			if (net.fabricmc.loader.api.FabricLoader.getInstance().isDevelopmentEnvironment()) {
+			if (net.fabricmc.loader.api.FabricLoader.getInstance().isDevelopmentEnvironment() && !"true".equals(System.getProperty("velo.ciOfflineSession"))) { // ci-only override
 				return false;
 			}
 			//? if <26.1 {
