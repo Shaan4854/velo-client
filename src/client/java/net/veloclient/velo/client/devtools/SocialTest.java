@@ -194,7 +194,7 @@ public final class SocialTest {
 						java.util.UUID self = dashed(SocialClient.myUuidPublic());
 						boolean[] live = {false};
 						long end = System.currentTimeMillis() + 90_000;
-						while (System.currentTimeMillis() < end && !Files.exists(dir.resolve("emote-seen-B"))) {
+						while (System.currentTimeMillis() < end && !(live[0] && Files.exists(dir.resolve("emote-seen-B")))) {
 							net.veloclient.velo.client.emotes.Emotes.playLocal(self, emoteId);
 							try {
 								var on = SocialClient.apiGet("/v1/online").get();
