@@ -291,12 +291,11 @@ public final class SocialTest {
 							before[0] = pl;
 						}
 					});
-					if (!await("trial-" + n + "-start", 90, () -> Files.exists(dir.resolve("delay-t0-" + n)))) {
-						break;
-					}
-					long t0 = Long.parseLong(Files.readString(dir.resolve("delay-t0-" + n)).trim());
+					// One tight loop (10 ms) from before A even starts: remember the moment the new entry shows up, and read A's start
+					// time afterwards, so the result is not rounded up by a slower file wait.
 					boolean seen = false;
-					long deadline = System.currentTimeMillis() + 30_000;
+					long seenAt = 0;
+					long deadline = System.currentTimeMillis() + 120_000;
 					while (System.currentTimeMillis() < deadline) {
 						final Object[] now = {null};
 						net.veloclient.velo.client.emotes.Emotes.forEachPlaying((u, pl) -> {
@@ -306,11 +305,24 @@ public final class SocialTest {
 						});
 						if (now[0] != null && now[0] != before[0]) {
 							seen = true;
+							seenAt = System.currentTimeMillis();
 							break;
 						}
 						Thread.sleep(10);
 					}
-					long ms = System.currentTimeMillis() - t0;
+					if (!seen) {
+						log("EMOTE_DELAY_MS", false, "trial " + n + " never seen");
+						break;
+					}
+					long t0 = 0;
+					for (int w = 0; w < 100 && t0 == 0; w++) {
+						if (Files.exists(dir.resolve("delay-t0-" + n))) {
+							t0 = Long.parseLong(Files.readString(dir.resolve("delay-t0-" + n)).trim());
+						} else {
+							Thread.sleep(10);
+						}
+					}
+					long ms = seenAt - t0;
 					log("EMOTE_DELAY_MS", seen, "trial " + n + " " + ms + " realtime=" + net.veloclient.velo.client.network.VeloRealtime.connected()
 							+ " nudges=" + net.veloclient.velo.client.network.VeloRealtime.nudges);
 					Files.writeString(dir.resolve("delay-ack-" + n), "1");
