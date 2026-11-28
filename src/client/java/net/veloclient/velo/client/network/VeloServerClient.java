@@ -233,6 +233,23 @@ public final class VeloServerClient {
 		}
 	}
 
+	/**
+	 * The game is closing: tell the server we're going offline now (friends see it at once instead of after the session
+	 * TTL), waiting at most two seconds so a slow or unreachable server never delays quitting.
+	 */
+	public static void stopOnGameExit() {
+		String token = sessionToken.getAndSet(null);
+		if (token != null) {
+			Thread end = Thread.ofPlatform().daemon().start(() -> endSessionQuietly(token));
+			try {
+				end.join(2000);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
+		}
+		stop();
+	}
+
 	/** The configured server's base URL, or null if none - shared with {@code RemoteCapeCache}'s downloads. */
 	public static String serverBaseUrl() {
 		VeloNetworkConfig config = VeloNetworkConfig.load();

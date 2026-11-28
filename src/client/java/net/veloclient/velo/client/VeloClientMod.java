@@ -187,6 +187,7 @@ public final class VeloClientMod implements ClientModInitializer {
 		// it) at least once.
 		net.veloclient.velo.client.crosshair.CrosshairManager.loadLibrary();
 		ModuleRegistry.exportManifest();
+		net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents.CLIENT_STOPPING.register(client -> net.veloclient.velo.client.network.VeloServerClient.stopOnGameExit());
 		AnticheatTestController.initIfEnabled();
 		net.veloclient.velo.client.devtools.ScreenshotTour.initIfRequested();
 		net.veloclient.velo.client.devtools.CosmeticsBench.register();
