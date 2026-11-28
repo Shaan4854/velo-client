@@ -133,8 +133,10 @@ export class RegistryDO {
   }
 
   async fetch(request: Request): Promise<Response> {
+    const seqBefore = this.social.currentSeq();
     try {
       this.sweep();
+      if (new URL(request.url).pathname === "/v1/ws") return this.openSocket(request);
       return await this.route(request);
     } catch (e) {
       if (e instanceof HttpError || e instanceof SocialError) return json(e.status, { error: e.message });
@@ -142,7 +144,59 @@ export class RegistryDO {
       return json(500, { error: "Internal server error" });
     } finally {
       this.social.flush();
+      if (request.method === "POST") this.pushChanges(seqBefore);
     }
+  }
+
+  // ---------------------------------------------------------------- realtime (WebSocket hibernation)
+  // The socket is only a "something changed" nudge: the client answers it with the same cheap HTTP read it
+  // already polls with (online list since=, social poll since=). Nothing is held in memory per socket, so the
+  // Durable Object can hibernate between nudges; incoming messages (only keepalive pings) cost nothing.
+
+  private openSocket(request: Request): Response {
+    if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") throw new HttpError(426, "Expected a WebSocket upgrade");
+    const s = this.session(this.bearer(request));
+    if (!s) throw new HttpError(401, "Unknown or expired session - re-authenticate");
+    for (const old of this.state.getWebSockets(s.uuid)) {
+      try { old.close(1000, "replaced"); } catch { /* already closed */ }
+    }
+    const pair = new WebSocketPair();
+    const [client, server] = [pair[0], pair[1]];
+    this.state.acceptWebSocket(server, [s.uuid]);
+    this.state.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
+    server.send(JSON.stringify({ t: "hello" }));
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  private pushChanges(seqBefore: number): void {
+    const sockets = this.state.getWebSockets();
+    if (!sockets.length) return;
+    const before = this.version;
+    this.onlineAnswer(before);
+    const online = this.version !== before;
+    const social = this.social.currentSeq() > seqBefore;
+    if (!online && !social) return;
+    for (const ws of sockets) {
+      const uuid = this.state.getTags(ws)[0];
+      const msgs: string[] = [];
+      if (online) msgs.push(JSON.stringify({ t: "online", v: this.version }));
+      if (social && this.social.hasEventsAfter(uuid, seqBefore)) msgs.push(JSON.stringify({ t: "social" }));
+      for (const m of msgs) {
+        try { ws.send(m); } catch { /* socket gone, close handler cleans up */ }
+      }
+    }
+  }
+
+  webSocketMessage(_ws: WebSocket, _message: string | ArrayBuffer): void {
+    // Keepalive pings are answered by the runtime (auto response). Nothing else is accepted from clients.
+  }
+
+  webSocketClose(ws: WebSocket, code: number): void {
+    try { ws.close(code === 1005 ? 1000 : code, "bye"); } catch { /* already closed */ }
+  }
+
+  webSocketError(ws: WebSocket): void {
+    try { ws.close(1011, "error"); } catch { /* already closed */ }
   }
 
   // ---------------------------------------------------------------- routing
@@ -460,7 +514,7 @@ export class RegistryDO {
     this.persist(token, s);
     this.seenToday.add(uuid);
     this.social.onAuthenticated(uuid, username);
-    return { sessionToken: token, heartbeatIntervalSeconds: HEARTBEAT_INTERVAL_S, sessionTtlSeconds: SESSION_TTL_MS / 1000 };
+    return { sessionToken: token, heartbeatIntervalSeconds: HEARTBEAT_INTERVAL_S, sessionTtlSeconds: SESSION_TTL_MS / 1000, realtime: true };
   }
 
   private persist(token: string, s: Session): void {

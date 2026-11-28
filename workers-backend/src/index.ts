@@ -10,7 +10,7 @@ export interface Env {
 
 // Routes the Durable Object handles. Everything else is not ours: public GETs are proxied (cached),
 // anything else answers 404 so the client treats the feature as unavailable.
-const OWN = /^\/v1\/(health|session\/|heartbeat$|online$|stats\/live$|cosmetics\/of$|cape\/|social\/|party\/)/;
+const OWN = /^\/v1\/(health|ws$|session\/|heartbeat$|online$|stats\/live$|cosmetics\/of$|cape\/|social\/|party\/)/;
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -25,6 +25,7 @@ export default {
     if (!url.pathname.startsWith("/v1/")) return new Response("Not found", { status: 404, headers: CORS });
     if (!OWN.test(url.pathname)) return passthrough(request, url, env);
     const stub = env.REGISTRY.get(env.REGISTRY.idFromName("global"));
+    if (request.headers.get("upgrade")?.toLowerCase() === "websocket") return stub.fetch(request);
     const ip = request.headers.get("cf-connecting-ip") ?? "";
     const headers = new Headers(request.headers);
     headers.set("x-client-ip", ip);

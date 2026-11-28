@@ -63,9 +63,29 @@ public final class VeloServerClient {
 	private static volatile long tickIntervalMillis = TICK_INTERVAL_SECONDS * 1000;
 	private static volatile long lastTickAt;
 	private static volatile long lastPollAt;
+	/** The fork backend said it speaks the realtime socket (see {@link VeloRealtime}). */
+	private static volatile boolean realtimeAdvertised;
+	/** With the socket open the timer polls are only a safety net. */
+	private static final long POLL_SAFETY_MILLIS = 90_000;
+
+	/** A realtime nudge arrived: run the online read now (on the client's own thread so reads never overlap). */
+	static void pollNow() {
+		ScheduledExecutorService s = scheduler;
+		String base = serverBaseUrl();
+		if (s == null || base == null || sessionToken.get() == null) {
+			return;
+		}
+		s.execute(() -> {
+			poll(base);
+			fetchOfflineLooks(base);
+		});
+	}
 
 	/** Honors the server's heartbeatIntervalSeconds (the fork backend asks for 60 s to stay inside the free plan). */
 	private static void applyAdvertisedIntervals(JsonObject response) {
+		if (response != null && response.has("realtime") && response.get("realtime").isJsonPrimitive()) {
+			realtimeAdvertised = response.get("realtime").getAsBoolean();
+		}
 		if (response != null && response.has("heartbeatIntervalSeconds") && response.get("heartbeatIntervalSeconds").isJsonPrimitive()) {
 			long seconds = response.get("heartbeatIntervalSeconds").getAsLong();
 			tickIntervalMillis = Math.max(20, Math.min(300, seconds)) * 1000;
@@ -191,7 +211,7 @@ public final class VeloServerClient {
 		}, 0, 5, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(() -> {
 			String base = serverBaseUrl();
-			long every = ONLINE.size() > 1 ? POLL_BUSY_MILLIS : POLL_IDLE_MILLIS;
+			long every = VeloRealtime.connected() ? POLL_SAFETY_MILLIS : ONLINE.size() > 1 ? POLL_BUSY_MILLIS : POLL_IDLE_MILLIS;
 			if (base != null && sessionToken.get() != null && System.currentTimeMillis() - lastPollAt >= every) {
 				poll(base);
 				fetchOfflineLooks(base);
@@ -214,6 +234,7 @@ public final class VeloServerClient {
 	}
 
 	public static synchronized void stop() {
+		VeloRealtime.stop();
 		if (scheduler == null) {
 			return;
 		}
@@ -280,6 +301,9 @@ public final class VeloServerClient {
 					status = "Offline account - sign in with a Microsoft account to use Velo Network";
 				}
 				return;
+			}
+			if (realtimeAdvertised) {
+				VeloRealtime.ensure(base, token);
 			}
 			String capeId = publishedCapeId(base, token);
 			try {

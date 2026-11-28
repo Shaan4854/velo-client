@@ -166,6 +166,15 @@ export class Social {
     };
   }
 
+  currentSeq(): number {
+    return this.seq;
+  }
+
+  hasEventsAfter(uuid: string, seq: number): boolean {
+    const q = this.events.get(uuid);
+    return !!q && q.length > 0 && q[q.length - 1].seq > seq;
+  }
+
   /** Queues an event for a player's next poll. Used by the party code too. */
   pushEvent(uuid: string, type: string, data: unknown): void {
     const q = this.events.get(uuid) ?? [];

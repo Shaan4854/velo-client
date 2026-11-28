@@ -250,7 +250,8 @@ public final class SocialClient {
 					publish(new Event("state", null, null, null, null));
 				}
 				if (pollAfter > 0) {
-					sleepQuietly(Math.min(pollAfter, 60_000));
+					// With the realtime socket open it nudges us on every event, so the timer is only a safety net.
+					waitForNudge(VeloRealtime.connected() ? 90_000 : Math.min(pollAfter, 60_000));
 				}
 			} catch (InterruptedException e) {
 				if (!running) {
@@ -268,6 +269,31 @@ public final class SocialClient {
 				since = 0;
 				sleepQuietly(5000);
 			}
+		}
+	}
+
+	private static final Object NUDGE = new Object();
+	private static boolean nudged;
+
+	/** The realtime socket says there is something to fetch: end the wait between polls now. */
+	static void nudge() {
+		synchronized (NUDGE) {
+			nudged = true;
+			NUDGE.notifyAll();
+		}
+	}
+
+	private static void waitForNudge(long millis) throws InterruptedException {
+		long end = System.currentTimeMillis() + millis;
+		synchronized (NUDGE) {
+			while (!nudged && running) {
+				long left = end - System.currentTimeMillis();
+				if (left <= 0) {
+					break;
+				}
+				NUDGE.wait(left);
+			}
+			nudged = false;
 		}
 	}
 
