@@ -33,6 +33,21 @@ public record MinecraftSession(
 		return type() == AccountType.OFFLINE;
 	}
 
+	/**
+	 * An entry with no access token and no refresh token cannot be a working Microsoft account. It is an offline entry
+	 * that lost its {@code "type"} (an older launcher that does not know the field rewrote account.json without it).
+	 */
+	public boolean lostItsOfflineType() {
+		return !isOffline() && (minecraftAccessToken == null || minecraftAccessToken.isBlank())
+				&& (microsoftRefreshToken == null || microsoftRefreshToken.isBlank())
+				&& uuid != null && username != null && !username.isBlank();
+	}
+
+	/** The same entry with its offline type put back. */
+	public MinecraftSession asOffline() {
+		return new MinecraftSession(null, Long.MAX_VALUE, null, uuid, username, AccountType.OFFLINE);
+	}
+
 	public boolean isMicrosoft() {
 		return type() == AccountType.MICROSOFT;
 	}

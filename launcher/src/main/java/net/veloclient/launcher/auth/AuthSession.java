@@ -47,14 +47,14 @@ public final class AuthSession {
 
 	/** The currently-active account, if any are saved. */
 	public static Optional<MinecraftSession> loadCached() {
-		AccountsFile file = load();
+		AccountsFile file = loadForRead();
 		return file.accounts().stream().filter(a -> a.uuid().equals(file.activeUuid())).findFirst()
 				.or(() -> file.accounts().stream().findFirst());
 	}
 
 	/** Every saved account, active one first. */
 	public static List<MinecraftSession> loadAllAccounts() {
-		AccountsFile file = load();
+		AccountsFile file = loadForRead();
 		List<MinecraftSession> ordered = new ArrayList<>(file.accounts());
 		ordered.sort((a, b) -> Boolean.compare(!a.uuid().equals(file.activeUuid()), !b.uuid().equals(file.activeUuid())));
 		return ordered;
@@ -62,7 +62,10 @@ public final class AuthSession {
 
 	/** Adds/updates an account by uuid (e.g. after a fresh sign-in or a token refresh) and marks it active. */
 	public static void save(MinecraftSession session) {
-		AccountsFile file = load();
+		AccountsFile file = loadForWrite();
+		if (file == null) {
+			return;
+		}
 		List<MinecraftSession> accounts = new ArrayList<>(file.accounts());
 		accounts.removeIf(a -> a.uuid().equals(session.uuid()));
 		accounts.add(session);
@@ -71,7 +74,10 @@ public final class AuthSession {
 
 	/** Switches the active account to an already-saved one (the account switcher dropdown), without re-authenticating. */
 	public static Optional<MinecraftSession> switchTo(String uuid) {
-		AccountsFile file = load();
+		AccountsFile file = loadForWrite();
+		if (file == null) {
+			return loadAllAccounts().stream().filter(a -> a.uuid().equals(uuid)).findFirst();
+		}
 		Optional<MinecraftSession> match = file.accounts().stream().filter(a -> a.uuid().equals(uuid)).findFirst();
 		match.ifPresent(m -> write(new AccountsFile(file.accounts(), uuid)));
 		return match;
@@ -83,7 +89,10 @@ public final class AuthSession {
 	 * into it instead of dropping back to "not signed in".
 	 */
 	public static Optional<MinecraftSession> remove(String uuid) {
-		AccountsFile file = load();
+		AccountsFile file = loadForWrite();
+		if (file == null) {
+			return Optional.empty();
+		}
 		List<MinecraftSession> remaining = file.accounts().stream().filter(a -> !a.uuid().equals(uuid)).toList();
 		String newActive = remaining.isEmpty() ? null : remaining.get(0).uuid();
 		write(new AccountsFile(remaining, newActive));
@@ -95,16 +104,78 @@ public final class AuthSession {
 		write(new AccountsFile(List.of(), null));
 	}
 
-	private static AccountsFile load() {
+	private static final String BACKUP_SUFFIX = ".bak";
+
+	/** For readers: whatever could be read, else nothing. Never writes. */
+	private static AccountsFile loadForRead() {
+		AccountsFile file = tryLoad();
+		return file != null ? file : new AccountsFile(List.of(), null);
+	}
+
+	/**
+	 * For writers: every writer reads, changes and writes the whole file, so a read that failed must not turn into
+	 * "no accounts" and overwrite the saved ones. Returns null (do not write) when the file exists but could not be
+	 * read; a file that is plain corrupt (and has no usable backup) is set aside and treated as empty so signing in
+	 * is never blocked.
+	 */
+	private static AccountsFile loadForWrite() {
+		AccountsFile file = tryLoad();
+		if (file != null) {
+			return file;
+		}
+		Path path = VeloPaths.config().resolve(CONFIG_ID);
+		if (Files.exists(path) && lastFailureWasCorruption) {
+			try {
+				Files.move(path, path.resolveSibling(CONFIG_ID + ".corrupt-" + System.currentTimeMillis()), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+			} catch (IOException e) {
+				net.veloclient.launcher.LauncherLog.warn("Could not set aside the unreadable account file", e);
+				return null;
+			}
+			return new AccountsFile(List.of(), null);
+		}
+		net.veloclient.launcher.LauncherLog.warn("Saved accounts could not be read right now; not overwriting them", null);
+		return null;
+	}
+
+	private static volatile boolean lastFailureWasCorruption;
+
+	/** Missing file = no accounts. A read error is retried; a bad file falls back to account.json.bak. Null if neither worked. */
+	private static AccountsFile tryLoad() {
 		Path path = VeloPaths.config().resolve(CONFIG_ID);
 		if (!Files.exists(path)) {
 			return new AccountsFile(List.of(), null);
 		}
-		try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-			return parse(JsonParser.parseReader(reader));
-		} catch (IOException | JsonSyntaxException e) {
-			return new AccountsFile(List.of(), null);
+		boolean corrupt = false;
+		for (int attempt = 1; attempt <= 3; attempt++) {
+			try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+				return parse(JsonParser.parseReader(reader));
+			} catch (JsonSyntaxException e) {
+				corrupt = true;
+				break; // retrying a bad file does not help
+			} catch (IOException e) {
+				corrupt = false;
+				if (attempt < 3) {
+					try {
+						Thread.sleep(100L * attempt);
+					} catch (InterruptedException interrupted) {
+						Thread.currentThread().interrupt();
+						break;
+					}
+				}
+			}
 		}
+		Path backup = path.resolveSibling(CONFIG_ID + BACKUP_SUFFIX);
+		if (Files.exists(backup)) {
+			try (Reader reader = Files.newBufferedReader(backup, StandardCharsets.UTF_8)) {
+				AccountsFile restored = parse(JsonParser.parseReader(reader));
+				net.veloclient.launcher.LauncherLog.warn("account.json could not be read; using account.json.bak", null);
+				return restored;
+			} catch (IOException | JsonSyntaxException ignored) {
+				// no usable backup either
+			}
+		}
+		lastFailureWasCorruption = corrupt;
+		return null;
 	}
 
 	/** Parses {@code account.json} content (current or legacy single-object format). Package-private for tests. */
@@ -117,11 +188,26 @@ public final class AuthSession {
 			if (parsed == null) {
 				return new AccountsFile(List.of(), null);
 			}
-			return new AccountsFile(parsed.accounts() != null ? parsed.accounts() : List.of(), parsed.activeUuid());
+			return new AccountsFile(healed(parsed.accounts()), parsed.activeUuid());
 		}
 		// Legacy pre-multi-account format: a bare MinecraftSession (always a Microsoft account).
 		MinecraftSession legacy = GSON.fromJson(root, MinecraftSession.class);
 		return legacy == null ? new AccountsFile(List.of(), null) : new AccountsFile(List.of(legacy), legacy.uuid());
+	}
+
+	/** Drops entries without a uuid and puts the offline type back on entries that lost it. Package-private for tests. */
+	static List<MinecraftSession> healed(List<MinecraftSession> accounts) {
+		List<MinecraftSession> out = new ArrayList<>();
+		if (accounts == null) {
+			return out;
+		}
+		for (MinecraftSession a : accounts) {
+			if (a == null || a.uuid() == null) {
+				continue;
+			}
+			out.add(a.lostItsOfflineType() ? a.asOffline() : a);
+		}
+		return out;
 	}
 
 	/** Serialises the file exactly as {@link #write} does. Package-private for tests. */
@@ -140,6 +226,13 @@ public final class AuthSession {
 		try {
 			try (Writer writer = Files.newBufferedWriter(tmp, StandardCharsets.UTF_8)) {
 				GSON.toJson(file, writer);
+			}
+			try {
+				if (Files.exists(path) && Files.size(path) > 2) {
+					Files.copy(path, path.resolveSibling(CONFIG_ID + BACKUP_SUFFIX), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+				}
+			} catch (IOException ignored) {
+				// the backup is a bonus
 			}
 			moveIntoPlace(tmp, path);
 		} catch (IOException e) {
