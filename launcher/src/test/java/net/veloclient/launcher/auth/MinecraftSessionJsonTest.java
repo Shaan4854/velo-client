@@ -117,19 +117,36 @@ class MinecraftSessionJsonTest {
 			assertEquals(AccountType.OFFLINE, s.type(), type);
 			assertFalse(AccountRefreshPolicy.removeAfterFailedRefresh(s, true), type);
 		}
-		assertEquals(AccountType.MICROSOFT, single("\"microsoft\"").type());
+		// no tokens at all cannot be a working Microsoft account: healed back to offline
+		assertEquals(AccountType.OFFLINE, single("\"microsoft\"").type());
 	}
 
 	@Test
-	void unknownTypeLoadsAsMicrosoftButIsNeverRefreshedOrRemovedWithoutRefreshToken() {
+	void tokenlessEntryWithUnknownTypeIsHealedToOfflineAndNeverRefreshedOrRemoved() {
 		for (String type : new String[] {"\"bogus\"", "\"\"", "null", "5"}) {
 			MinecraftSession s = single(type);
-			assertEquals(AccountType.MICROSOFT, s.type(), type);
+			assertEquals(AccountType.OFFLINE, s.type(), type);
 			assertNull(s.microsoftRefreshToken());
 			assertFalse(AccountRefreshPolicy.canRefresh(s), type);
 			assertFalse(AccountRefreshPolicy.refreshOnStartup(s), type);
 			assertFalse(AccountRefreshPolicy.refreshBeforeLaunch(s), type);
 			assertFalse(AccountRefreshPolicy.removeAfterFailedRefresh(s, true), type);
 		}
+	}
+
+	@Test
+	void entryThatLostItsTypeKeepsMicrosoftWhenItHasATokenAndIsHealedWhenItHasNone() {
+		String json = "{\"accounts\":["
+				+ "{\"minecraftAccessToken\":\"tok\",\"accessTokenExpiresAtEpochMillis\":5,\"microsoftRefreshToken\":\"r\",\"uuid\":\"" + MS_UUID + "\",\"username\":\"Real\"},"
+				+ "{\"uuid\":\"5627dd98e6be3c21b8a8e92344183641\",\"username\":\"Steve\"},"
+				+ "{\"username\":\"NoUuid\"}],\"activeUuid\":\"5627dd98e6be3c21b8a8e92344183641\"}";
+		AuthSession.AccountsFile file = AuthSession.parse(JsonParser.parseString(json));
+		assertEquals(2, file.accounts().size(), "an entry without a uuid is dropped");
+		assertEquals(AccountType.MICROSOFT, file.accounts().get(0).type());
+		MinecraftSession steve = file.accounts().get(1);
+		assertEquals(AccountType.OFFLINE, steve.type());
+		assertNull(steve.minecraftAccessToken());
+		assertFalse(steve.isAccessTokenExpired());
+		assertEquals("Steve", steve.username());
 	}
 }
