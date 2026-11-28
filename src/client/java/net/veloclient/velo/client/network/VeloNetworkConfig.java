@@ -14,11 +14,16 @@ import net.veloclient.velo.config.ConfigManager;
 public record VeloNetworkConfig(String serverUrl) {
 
 	private static final String MODULE_ID = "network";
-	public static final String DEFAULT_SERVER_URL = "https://api.velo-client.com";
+	/** Fork backend (Cloudflare Worker, see workers-backend/). The real address is set when the Worker is deployed (M5). */
+	public static final String DEFAULT_SERVER_URL = "https://velo-fork.shaaanansari786.workers.dev";
 	/** Where the official server used to live - a {@code network.json} still naming it follows the move. */
-	private static final java.util.Set<String> LEGACY_SERVER_URLS = java.util.Set.of("https://client.asteriasmp.net", "http://client.asteriasmp.net");
+	private static final java.util.Set<String> LEGACY_SERVER_URLS = java.util.Set.of("https://client.asteriasmp.net", "http://client.asteriasmp.net", "https://api.velo-client.com");
 
 	public static VeloNetworkConfig load() {
+		String override = System.getProperty("velo.serverUrl"); // dev/test: point a client at wrangler dev
+		if (override != null && !override.isBlank()) {
+			return new VeloNetworkConfig(override.trim());
+		}
 		VeloNetworkConfig config = ConfigManager.load(MODULE_ID, VeloNetworkConfig.class, new VeloNetworkConfig(DEFAULT_SERVER_URL));
 		if (config.isConfigured() && LEGACY_SERVER_URLS.contains(config.normalizedUrl())) {
 			return new VeloNetworkConfig(DEFAULT_SERVER_URL);

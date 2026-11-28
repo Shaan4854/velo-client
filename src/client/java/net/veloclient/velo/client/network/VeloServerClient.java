@@ -57,6 +57,20 @@ public final class VeloServerClient {
 	// keeps newly-joined players' badges appearing quickly for everyone else
 	// without needing to coordinate the two sides' timing.
 	private static final long TICK_INTERVAL_SECONDS = 20;
+	private static final long POLL_BUSY_MILLIS = 8_000;
+	private static final long POLL_IDLE_MILLIS = 20_000;
+	/** Heartbeat period: the server's advertised one (clamped 20..300 s), 20 s until it said. */
+	private static volatile long tickIntervalMillis = TICK_INTERVAL_SECONDS * 1000;
+	private static volatile long lastTickAt;
+	private static volatile long lastPollAt;
+
+	/** Honors the server's heartbeatIntervalSeconds (the fork backend asks for 60 s to stay inside the free plan). */
+	private static void applyAdvertisedIntervals(JsonObject response) {
+		if (response != null && response.has("heartbeatIntervalSeconds") && response.get("heartbeatIntervalSeconds").isJsonPrimitive()) {
+			long seconds = response.get("heartbeatIntervalSeconds").getAsLong();
+			tickIntervalMillis = Math.max(20, Math.min(300, seconds)) * 1000;
+		}
+	}
 	/** Other players' cosmetics are fetched this often (the public /v1/online list, cheap) - 20 s felt laggy. */
 	private static final long POLL_INTERVAL_SECONDS = 5;
 	private static final java.util.concurrent.atomic.AtomicBoolean SYNC_QUEUED = new java.util.concurrent.atomic.AtomicBoolean();
@@ -113,6 +127,14 @@ public final class VeloServerClient {
 		return sessionToken.get();
 	}
 
+	/** True while the live session came from an offline claim (not Microsoft). */
+	private static volatile boolean offlineClaimSession;
+
+	/** The session token for the offline-cosmetics gate: an offline claim does not count as a "real" Velo session. */
+	public static String sessionTokenForOfflineGate() {
+		return offlineClaimSession ? null : sessionToken.get();
+	}
+
 	/** Dashless uuid of the authenticated account, or null. */
 	public static String authenticatedUuid() {
 		return authenticatedUuid;
@@ -160,10 +182,17 @@ public final class VeloServerClient {
 			thread.setDaemon(true);
 			return thread;
 		});
-		scheduler.scheduleWithFixedDelay(VeloServerClient::tick, 0, TICK_INTERVAL_SECONDS, TimeUnit.SECONDS);
+		// Fork backend (free Cloudflare plan): the heartbeat period is the one the server advertises (60 s there),
+		// and the online poll is 8 s while other Velo players are around (emotes, new cosmetics) and 20 s when alone.
+		scheduler.scheduleWithFixedDelay(() -> {
+			if (System.currentTimeMillis() - lastTickAt >= tickIntervalMillis) {
+				tick();
+			}
+		}, 0, 5, TimeUnit.SECONDS);
 		scheduler.scheduleWithFixedDelay(() -> {
 			String base = serverBaseUrl();
-			if (base != null && sessionToken.get() != null) {
+			long every = ONLINE.size() > 1 ? POLL_BUSY_MILLIS : POLL_IDLE_MILLIS;
+			if (base != null && sessionToken.get() != null && System.currentTimeMillis() - lastPollAt >= every) {
 				poll(base);
 				fetchOfflineLooks(base);
 			}
@@ -211,6 +240,7 @@ public final class VeloServerClient {
 	}
 
 	private static void tick() {
+		lastTickAt = System.currentTimeMillis();
 		try {
 			String base = serverBaseUrl();
 			if (base == null) {
@@ -288,6 +318,15 @@ public final class VeloServerClient {
 			nextAuthAttemptMillis = 0;
 			return;
 		}
+		if (gameAccount.isEmpty()) {
+			Optional<ActiveAccountReader.Account> offline = GameSessionReader.readOffline();
+			if (offline.isPresent() && (GameSessionReader.isOfflineSession() || ActiveAccountReader.read().isEmpty())) {
+				if (tryOfflineClaim(base, offline.get())) {
+					nextAuthAttemptMillis = 0;
+				}
+				return;
+			}
+		}
 		if (gameAccount.isEmpty() && GameSessionReader.isOfflineSession()) {
 			// Offline game: never fall back to the launcher's saved (Microsoft) account - that would put its badge and
 			// cosmetics on a different player (e.g. after switching accounts in the launcher mid-game).
@@ -323,6 +362,34 @@ public final class VeloServerClient {
 		}
 	}
 
+	/** Fork backend: an offline account signs in with its own uuid, name and a per-install secret (trust on first use). */
+	private static boolean tryOfflineClaim(String base, ActiveAccountReader.Account account) {
+		try {
+			String uuid = normalizeUuid(account.uuid());
+			JsonObject body = new JsonObject();
+			body.addProperty("uuid", uuid);
+			body.addProperty("username", account.username());
+			body.addProperty("secret", OfflineIdentity.secret());
+			body.addProperty("kind", "game");
+			JsonObject response = postJson(base + "/v1/session/offline-claim", body);
+			String token = requireString(response, "sessionToken");
+			applyAdvertisedIntervals(response);
+			authenticatedUuid = uuid;
+			offlineClaimSession = true;
+			sessionToken.set(token);
+			net.veloclient.velo.client.cosmetics.CosmeticsCatalog.refresh(true);
+			return true;
+		} catch (HttpStatusException e) {
+			reportUnreachable(e.status == 403 ? "This offline name is already used by another Velo install - pick another name"
+					: e.status >= 500 ? "Velo server is down (HTTP " + e.status + ") - try again later"
+					: "Sign-in to the Velo server failed (HTTP " + e.status + ")", e);
+			return false;
+		} catch (Exception e) {
+			reportUnreachable("Can't reach the Velo server", e);
+			return false;
+		}
+	}
+
 	private static boolean tryAuthenticate(String base, ActiveAccountReader.Account account) {
 		String uuid = normalizeUuid(account.uuid());
 		if (uuid == null || account.accessToken() == null || account.username() == null) {
@@ -333,6 +400,7 @@ public final class VeloServerClient {
 			joinMojangSession(account.accessToken(), uuid, serverId);
 			String token = verifySession(base, uuid, serverId);
 			authenticatedUuid = uuid;
+			offlineClaimSession = false;
 			sessionToken.set(token);
 			// Fetch what you own right away - until then your equipped wings/cape couldn't be shown on you.
 			StoreClient.refresh(true, null);
@@ -382,6 +450,7 @@ public final class VeloServerClient {
 		body.addProperty("serverId", serverId);
 		body.addProperty("kind", "game");
 		JsonObject response = postJson(base + "/v1/session/verify", body);
+		applyAdvertisedIntervals(response);
 		return requireString(response, "sessionToken");
 	}
 
@@ -437,6 +506,7 @@ public final class VeloServerClient {
 	private static String onlineBase;
 
 	private static synchronized void poll(String base) {
+		lastPollAt = System.currentTimeMillis();
 		try {
 			if (!base.equals(onlineBase)) {
 				onlineBase = base;
@@ -501,7 +571,11 @@ public final class VeloServerClient {
 				JsonObject user = e.getValue();
 				users.add(user);
 				String username = user.has("username") && !user.get("username").isJsonNull() ? user.get("username").getAsString() : null;
-				if (user.has("emote") && !user.get("emote").isJsonNull()) {
+				// Fork backend stamps when the emote started (server clock): one that began over 8 s before this answer is
+				// too old to play now, so skip it instead of replaying it late.
+				boolean staleEmote = user.has("emoteAtMillis") && json.has("serverTimeMillis")
+						&& json.get("serverTimeMillis").getAsLong() - user.get("emoteAtMillis").getAsLong() > 8_000;
+				if (!staleEmote && user.has("emote") && !user.get("emote").isJsonNull()) {
 					emotes.put(uuid, user.get("emote").getAsString());
 				}
 				if (username != null) {

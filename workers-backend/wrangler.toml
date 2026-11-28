@@ -1,0 +1,14 @@
+name = "velo-fork"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+
+[[durable_objects.bindings]]
+name = "REGISTRY"
+class_name = "RegistryDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RegistryDO"]
+
+[vars]
+UPSTREAM_BASE = "https://api.velo-client.com"

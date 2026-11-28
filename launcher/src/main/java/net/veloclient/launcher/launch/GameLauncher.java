@@ -327,6 +327,9 @@ public final class GameLauncher {
 		// Which account's cosmetics the game wears (config/accounts/<uuid>/) - the same files the launcher's Locker edits.
 		jvmArgs.add("-Dvelo.account=" + session.uuid().replace("-", ""));
 		jvmArgs.addAll(net.veloclient.launcher.offline.OfflineCosmetics.jvmFlags(session)); // offline-cosmetics
+		if (session != null && session.isOffline()) { // fork backend: the same offline-name secret in the launcher and the game
+			jvmArgs.add("-Dvelo.offlineSecret=" + net.veloclient.launcher.social.OfflineIdentity.secret());
+		}
 		// AI flags only for a launch an AI asked for (--launch <profile> --ai): a normal Play click never gets them, so a
 		// hidden AI copy and a normal copy can run side by side (the global toggle used to hide every game and stop it
 		// taking the mouse).

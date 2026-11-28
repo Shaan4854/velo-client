@@ -1,0 +1,92 @@
+// Social + party smoke test against `wrangler dev` (BASE env). Two offline players.
+import { createHash, randomBytes } from "node:crypto";
+const BASE = process.env.BASE ?? "http://localhost:8799";
+let fails = 0;
+const ok = (c, m) => { console.log((c ? "PASS " : "FAIL ") + m); if (!c) fails++; };
+const offUuid = (n) => { const m = createHash("md5").update("OfflinePlayer:" + n).digest(); m[6] = (m[6] & 0x0f) | 0x30; m[8] = (m[8] & 0x3f) | 0x80; return m.toString("hex"); };
+const call = async (method, path, token, body) => {
+  const r = await fetch(BASE + path, { method, headers: { "content-type": "application/json", ...(token ? { authorization: "Bearer " + token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
+  let j = null; try { j = await r.json(); } catch {}
+  return { s: r.status, j };
+};
+const login = async (name, kind = "game") => {
+  const r = await call("POST", "/v1/session/offline-claim", null, { uuid: offUuid(name), username: name, secret: randomBytes(24).toString("hex"), kind });
+  return { name, uuid: offUuid(name), token: r.j.sessionToken };
+};
+const id = Math.floor(Math.random() * 1e5);
+const A = await login("Alice" + id), B = await login("Bob" + id);
+let r = await call("GET", "/v1/social/state", "bad");
+ok(r.s === 401, "social needs a valid session");
+let pa = await call("GET", "/v1/social/poll?since=0", A.token);
+ok(pa.j.reset === true && pa.j.pollAfterMs === 30000, "first poll resets and advertises 30 s");
+let seqA = pa.j.seq;
+let pb = await call("GET", "/v1/social/poll?since=0", B.token);
+let seqB = pb.j.seq;
+
+r = await call("POST", "/v1/social/request", A.token, { target: B.name });
+ok(r.s === 200 && r.j.uuid === B.uuid, "friend request by name");
+pb = await call("GET", "/v1/social/poll?since=" + seqB, B.token);
+ok(pb.j.events.some((e) => e.type === "friend_request"), "target gets a friend_request event");
+seqB = pb.j.seq;
+r = await call("POST", "/v1/social/request", A.token, { target: B.name });
+ok(r.s === 409, "duplicate request refused");
+r = await call("GET", "/v1/social/state", B.token);
+ok(r.j.incoming.length === 1, "request listed as incoming");
+r = await call("POST", "/v1/social/respond", B.token, { uuid: A.uuid, accept: true });
+ok(r.s === 200, "accept");
+r = await call("GET", "/v1/social/state", A.token);
+ok(r.j.friends.length === 1 && r.j.friends[0].online === true && r.j.friends[0].username === B.name, "friend shows online (live game session)");
+
+r = await call("POST", "/v1/social/message", A.token, { to: B.uuid, text: "hello bob" });
+ok(r.s === 200 && r.j.text === "hello bob", "send message");
+pb = await call("GET", "/v1/social/poll?since=" + seqB, B.token);
+ok(pb.j.events.some((e) => e.type === "message" && e.data.fromName === A.name), "message event arrives on poll");
+seqB = pb.j.seq;
+r = await call("GET", "/v1/social/state", B.token);
+ok(r.j.friends[0].unread === 1, "unread count 1");
+await call("POST", "/v1/social/read", B.token, { uuid: A.uuid });
+r = await call("GET", "/v1/social/messages?with=" + A.uuid, B.token);
+ok(r.j.messages.length === 1, "history returns the message");
+r = await call("GET", "/v1/social/state", B.token);
+ok(r.j.friends[0].unread === 0, "read clears unread");
+
+await call("POST", "/v1/social/presence", A.token, { kind: "server", detail: "play.example.net" });
+r = await call("GET", "/v1/social/state", B.token);
+ok(r.j.friends[0].activity?.kind === "server", "presence visible to friends");
+await call("POST", "/v1/social/status", A.token, { invisible: true });
+r = await call("GET", "/v1/social/state", B.token);
+ok(r.j.friends[0].online === false, "invisible hides presence");
+await call("POST", "/v1/social/status", A.token, { invisible: false });
+
+r = await call("POST", "/v1/party/create", A.token, {});
+ok(r.s === 200 && r.j.leader === A.uuid, "party created");
+r = await call("POST", "/v1/party/invite", A.token, { target: B.name });
+ok(r.s === 200 && r.j.invited.length === 1, "invite friend");
+r = await call("GET", "/v1/party/state", B.token);
+ok(r.j.invites.length === 1, "invite visible");
+const pid = r.j.invites[0].party;
+r = await call("POST", "/v1/party/respond", B.token, { party: pid, accept: true });
+ok(r.j.party?.members.length === 2, "join party");
+r = await call("POST", "/v1/party/chat", A.token, { text: "gg" });
+ok(r.s === 200 && r.j.text === "gg", "party chat");
+pb = await call("GET", "/v1/social/poll?since=" + seqB, B.token);
+ok(pb.j.pollAfterMs === 8000 && pb.j.events.some((e) => e.type === "party_chat"), "party chat event + fast 8 s poll hint inside a party");
+r = await call("POST", "/v1/party/position", B.token, { payload: { x: 1.5, y: 64, z: -3, yaw: 90, dimension: "minecraft:overworld" } });
+r = await call("GET", "/v1/party/positions", A.token);
+ok(r.j.positions.length === 1 && r.j.positions[0].x === 1.5, "live position shared");
+r = await call("POST", "/v1/party/kick", B.token, { uuid: A.uuid });
+ok(r.s === 403, "non-leader cannot kick");
+r = await call("POST", "/v1/party/launch", A.token, { server: "play.example.net", mcVersion: "1.21.11" });
+pb = await call("GET", "/v1/social/poll?since=" + seqB, B.token);
+ok(pb.j.events.some((e) => e.type === "party_launch"), "launch call reaches members");
+r = await call("POST", "/v1/party/leave", A.token, {});
+r = await call("GET", "/v1/party/state", B.token);
+ok(r.j.party?.leader === B.uuid, "leader leaves, member leads");
+r = await call("POST", "/v1/social/unfriend", A.token, { uuid: B.uuid });
+r = await call("POST", "/v1/social/block", A.token, { target: B.name });
+r = await call("POST", "/v1/social/request", B.token, { target: A.name });
+ok(r.s === 200, "request to a blocker is accepted silently");
+r = await call("GET", "/v1/social/state", A.token);
+ok(r.j.incoming.length === 0 && r.j.blocked.length === 1, "blocked sender's request is hidden");
+console.log(fails ? fails + " FAILED" : "ALL PASSED");
+process.exit(fails ? 1 : 0);
