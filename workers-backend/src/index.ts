@@ -36,10 +36,14 @@ export default {
   },
 };
 
+// The client adds its session token to catalog/item/file reads. These are public, and we never forward the header
+// upstream (the upstream request below is anonymous), so the token is simply ignored for them.
+const PUBLIC_WITH_AUTH = /^\/v1\/cosmetics\/(catalog|item|file\/)/;
+
 async function passthrough(request: Request, url: URL, env: Env): Promise<Response> {
   const notHere = () => new Response(JSON.stringify({ error: "Not available on this server" }), { status: 404, headers: { "content-type": "application/json", ...CORS } });
   const base = (env.UPSTREAM_BASE ?? "").replace(/\/$/, "");
-  if (!base || request.method !== "GET" || request.headers.has("authorization") || /^\/v1\/(admin|staff|staffpanel|tester)\//.test(url.pathname)) return notHere();
+  if (!base || request.method !== "GET" || (request.headers.has("authorization") && !PUBLIC_WITH_AUTH.test(url.pathname)) || /^\/v1\/(admin|staff|staffpanel|tester)\//.test(url.pathname)) return notHere();
   // Only anonymous public reads: no auth header is forwarded, results are cached for 10 minutes.
   const cache = caches.default;
   const key = new Request(base + url.pathname + url.search);
