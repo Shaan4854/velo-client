@@ -1,4 +1,4 @@
-name = "velo-fork-backend"
+name = "velo-fork"
 main = "src/index.ts"
 compatibility_date = "2025-09-01"
 

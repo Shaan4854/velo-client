@@ -37,7 +37,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public final class LauncherSocial {
 
-	public static final String DEFAULT_SERVER_URL = "https://velo-fork-backend.workers.dev"; // set to the deployed Worker in M5
+	public static final String DEFAULT_SERVER_URL = "https://velo-fork.shaaanansari786.workers.dev"; 
 	/** The official server's old address - a saved {@code network.json} still naming it follows the move. */
 	private static final java.util.Set<String> LEGACY_SERVER_URLS = java.util.Set.of("https://client.asteriasmp.net", "http://client.asteriasmp.net", "https://api.velo-client.com");
 

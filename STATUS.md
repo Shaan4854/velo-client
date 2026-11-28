@@ -24,3 +24,8 @@ Client patches listed in context.md section 6. Screenshot workflow: `client-scre
 - Offline-claim is trust on first use.
 - No in-game runtime test is possible in the build sandbox; client changes in M4 are compile-verified only.
 - Agent expiry: the coding agent expires Nov 29 2026 01:59 IST; this file and `context.md` are the handover.
+
+## M5 deploy (2026-11-28 11:41 IST)
+- Worker `velo-fork` live at https://velo-fork.shaaanansari786.workers.dev (account subdomain already existed). Version f3269aed-ef14-4a5a-822b-a527c5a420ff.
+- Live smoke (19) + social (28) checks all PASS against the live URL.
+- Client + launcher default URL now points at it (compiles pending).

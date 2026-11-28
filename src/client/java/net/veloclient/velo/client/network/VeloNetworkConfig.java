@@ -15,7 +15,7 @@ public record VeloNetworkConfig(String serverUrl) {
 
 	private static final String MODULE_ID = "network";
 	/** Fork backend (Cloudflare Worker, see workers-backend/). The real address is set when the Worker is deployed (M5). */
-	public static final String DEFAULT_SERVER_URL = "https://velo-fork-backend.workers.dev";
+	public static final String DEFAULT_SERVER_URL = "https://velo-fork.shaaanansari786.workers.dev";
 	/** Where the official server used to live - a {@code network.json} still naming it follows the move. */
 	private static final java.util.Set<String> LEGACY_SERVER_URLS = java.util.Set.of("https://client.asteriasmp.net", "http://client.asteriasmp.net", "https://api.velo-client.com");
 

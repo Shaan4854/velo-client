@@ -132,7 +132,7 @@ flowchart TD
 - M2 session and presence/cosmetics core in TypeScript, tested with `wrangler dev`: done on this branch (19 smoke checks pass, `workers-backend/test/smoke.mjs`).
 - M3 social (14 routes) and party (20 routes) ported (`social.ts`, `party.ts`, tests in `test/social.mjs`, 28 checks pass). Stubs for other client-called routes (store, plus, rewards, worlds, notes, etc.): decided in M4 after checking how the client reacts to 404.
 - M4 client patches: done and compiled (launcher compile + tests, mod 1.21.11 and 1.21.1; the other versions go through Actions). What changed:
-  - Default server URL is `VeloNetworkConfig.DEFAULT_SERVER_URL` / `LauncherSocial.DEFAULT_SERVER_URL` (placeholder `https://velo-fork-backend.workers.dev`, set at M5). `network.json` entries naming the upstream server follow the move. `-Dvelo.serverUrl=` overrides it in the mod too (used for tests against `wrangler dev`).
+  - Default server URL is `VeloNetworkConfig.DEFAULT_SERVER_URL` / `LauncherSocial.DEFAULT_SERVER_URL` (placeholder `https://velo-fork.shaaanansari786.workers.dev`, set at M5). `network.json` entries naming the upstream server follow the move. `-Dvelo.serverUrl=` overrides it in the mod too (used for tests against `wrangler dev`).
   - Offline sign-in: `VeloServerClient.tryOfflineClaim` and `LauncherSocial.authenticateOffline` call `/v1/session/offline-claim` with the uuid, name and a per-install secret (`OfflineIdentity`, file `offline-identity.key`). The launcher passes its secret to offline games as `-Dvelo.offlineSecret` so launcher and game claim the same name with the same secret.
   - `OfflineCosmetics` gate: an offline-claim session no longer switches the local unlock off (`VeloServerClient.sessionTokenForOfflineGate()`), so the Locker stays unlocked while the player is online-visible. Microsoft sessions still switch it off.
   - Intervals: mod heartbeat follows the server's advertised period (60 s; clamped 20 to 300 s); online poll 8 s while other Velo players are online, 20 s alone; social polls (mod and launcher) follow `pollAfterMs` instead of long-polling; emotes older than 8 s on the server clock are skipped.
@@ -149,3 +149,7 @@ BASE=http://localhost:8799 node test/smoke.mjs
 BASE=http://localhost:8799 node test/social.mjs
 ```
 Sandbox notes: 1 CPU, 2 GB RAM. Mod/launcher builds need JDK 25 with `--no-daemon --no-configuration-cache --configure-on-demand --no-parallel -Dorg.gradle.jvmargs=-Xmx1400m`.
+
+## M5 deploy
+- Deployed with wrangler using a Workers-scoped API token (vault item `Cloudflare API token - velo deploy`, account-only, expires 2027-02-26). Account ID is in the vault entry username. Redeploy: `cd workers-backend && CLOUDFLARE_API_TOKEN=<from vault> CLOUDFLARE_ACCOUNT_ID=<id> npx wrangler deploy`.
+- Live URL https://velo-fork.shaaanansari786.workers.dev. Live test players created by the checks (names starting with test) remain in the registry.
