@@ -918,6 +918,9 @@ stonecutter parameters {
 			// "ComponentGizmo" - a real confirmed compile failure), the same
 			// technique as the getBoundingBox() shield above.
 			replace("TextGizmo", "TextGizmo")
+			// java.net.http.WebSocket API names (VeloRealtime) - the bare Text rule would turn them into sendComponent/onComponent.
+			replace("sendText(", "sendText(")
+			replace("onText(", "onText(")
 			// Shields for real Mojmap packet class names that contain "Text" - without these the
 			// bare "Text" -> "Component" rule below mangles them (BackgroundQueue's GhostPackets).
 			replace("ClientboundSetActionBarTextPacket", "ClientboundSetActionBarTextPacket")
