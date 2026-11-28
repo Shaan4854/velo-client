@@ -153,3 +153,6 @@ Sandbox notes: 1 CPU, 2 GB RAM. Mod/launcher builds need JDK 25 with `--no-daemo
 ## M5 deploy
 - Deployed with wrangler using a Workers-scoped API token (vault item `Cloudflare API token - velo deploy`, account-only, expires 2027-02-26). Account ID is in the vault entry username. Redeploy: `cd workers-backend && CLOUDFLARE_API_TOKEN=<from vault> CLOUDFLARE_ACCOUNT_ID=<id> npx wrangler deploy`.
 - Live URL https://velo-fork.shaaanansari786.workers.dev. Live test players created by the checks (names starting with test) remain in the registry.
+
+## Release 1.6.1 (2026-11-28)
+Main = upstream 1.6.0 merge + Workers backend (workers-backend/) + live default URL. Version bumped in launcher/build.gradle (launcherAppVersion) and stonecutter.properties.toml (mod.version). Test/CI-only code (screenshot tour, two-client SocialTest) lives only on ci/screenshot.

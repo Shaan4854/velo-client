@@ -29,3 +29,8 @@ Client patches listed in context.md section 6. Screenshot workflow: `client-scre
 - Worker `velo-fork` live at https://velo-fork.shaaanansari786.workers.dev (account subdomain already existed). Version f3269aed-ef14-4a5a-822b-a527c5a420ff.
 - Live smoke (19) + social (28) checks all PASS against the live URL.
 - Client + launcher default URL now points at it (compiles pending).
+
+## 2026-11-28 12:20 IST - merged to main, v1.6.1
+- Live-client test passed: a real CI game client (run 46117552748) claimed on the live Worker (https://velo-fork.shaaanansari786.workers.dev) and was listed by the live /v1/online while running.
+- feat/workers-backend merged into main (no force-push); launcher + mod version 1.6.1; release v1.6.1 follows the build check.
+- Still open: two-client friends/party test on the throwaway ci/screenshot branch (not part of main).
