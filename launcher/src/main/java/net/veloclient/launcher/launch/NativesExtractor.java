@@ -24,28 +24,90 @@ public final class NativesExtractor {
 	private NativesExtractor() {
 	}
 
-	public static void prepare(Path nativesDir, JsonArray vanillaLibraries) throws IOException {
-		prepare(nativesDir, vanillaLibraries, null);
+	public static Path prepare(Path nativesDir, JsonArray vanillaLibraries) throws IOException {
+		return prepare(nativesDir, vanillaLibraries, null);
+	}
+
+	/** Deletes one path; a seam so tests can simulate Windows holding a DLL open. */
+	interface Deleter {
+		void delete(Path path) throws IOException;
+	}
+
+	/**
+	 * Empties {@code dir}, retrying with a growing pause when Windows (a leftover game process, or antivirus scanning
+	 * the DLL it just saw) refuses a delete. Returns false when something stayed locked after every attempt.
+	 */
+	static boolean clearDir(Path dir, int attempts, long pauseMillis, Deleter deleter) {
+		if (!Files.exists(dir)) {
+			return true;
+		}
+		for (int attempt = 1; attempt <= attempts; attempt++) {
+			boolean allGone = true;
+			try (var stream = Files.walk(dir)) {
+				for (Path path : stream.sorted(java.util.Comparator.reverseOrder()).toList()) {
+					try {
+						deleter.delete(path);
+					} catch (IOException e) {
+						allGone = false;
+					}
+				}
+			} catch (IOException e) {
+				allGone = false;
+			}
+			if (allGone) {
+				return true;
+			}
+			if (attempt < attempts) {
+				try {
+					Thread.sleep(pauseMillis * attempt);
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+					return false;
+				}
+			}
+		}
+		return false;
+	}
+
+	/** Best effort: removes natives-xxxx folders an earlier launch left behind when it could not reuse natives/. */
+	private static void removeStaleFallbacks(Path nativesDir, Path keep) {
+		Path parent = nativesDir.getParent();
+		if (parent == null || !Files.isDirectory(parent)) {
+			return;
+		}
+		String prefix = nativesDir.getFileName() + "-";
+		try (var siblings = Files.list(parent)) {
+			for (Path sibling : siblings.filter(p -> p.getFileName().toString().startsWith(prefix) && !p.equals(keep)).toList()) {
+				clearDir(sibling, 1, 0, Files::deleteIfExists);
+			}
+		} catch (IOException ignored) {
+			// leftovers are harmless
+		}
 	}
 
 	/**
 	 * {@code loaderLibraries}: Legacy Fabric replaces LWJGL 2 with its own build whose natives sit next to it on its maven
 	 * ({@code natives} map, no {@code downloads}) - unpacked after vanilla's so the matching ones win.
+	 *
+	 * <p>Returns the directory the game must use. Normally {@code nativesDir}; if a file in it stays locked after a few
+	 * retries (Windows "access denied" on lwjgl.dll) a fresh {@code natives-<stamp>} folder is used for this launch
+	 * instead of failing the whole launch, and old fallbacks are cleaned up on later launches.
 	 */
-	public static void prepare(Path nativesDir, JsonArray vanillaLibraries, JsonArray loaderLibraries) throws IOException {
-		if (Files.exists(nativesDir)) {
-			try (var stream = Files.walk(nativesDir)) {
-				for (Path path : stream.sorted(java.util.Comparator.reverseOrder()).toList()) {
-					Files.deleteIfExists(path);
-				}
-			}
+	public static Path prepare(Path nativesDir, JsonArray vanillaLibraries, JsonArray loaderLibraries) throws IOException {
+		Path target = nativesDir;
+		if (!clearDir(nativesDir, 5, 300, Files::deleteIfExists)) {
+			target = nativesDir.resolveSibling(nativesDir.getFileName() + "-" + Long.toString(System.currentTimeMillis(), 36));
+			net.veloclient.launcher.LauncherLog.warn("natives folder is locked (a game or antivirus holds a file); using " + target.getFileName(), null);
+		} else {
+			removeStaleFallbacks(nativesDir, null);
 		}
+		nativesDir = target;
 		Files.createDirectories(nativesDir);
 		if (vanillaLibraries != null) {
 			extractAll(nativesDir, vanillaLibraries);
 		}
 		if (loaderLibraries == null) {
-			return;
+			return nativesDir;
 		}
 		for (var element : loaderLibraries) {
 			JsonObject library = element.getAsJsonObject();
@@ -66,6 +128,7 @@ public final class NativesExtractor {
 			Downloader.ensure(java.net.URI.create(base + path), jarPath, null, -1, b -> { });
 			extractJar(jarPath, nativesDir);
 		}
+		return nativesDir;
 	}
 
 	private static void extractAll(Path nativesDir, JsonArray vanillaLibraries) throws IOException {

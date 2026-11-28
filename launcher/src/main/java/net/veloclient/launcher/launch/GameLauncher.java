@@ -172,7 +172,7 @@ public final class GameLauncher {
 		listener.onPhase("Preparing natives...");
 		Path nativesDir = InstancePaths.dir(instance.id()).resolve("natives");
 		if (!alreadyRunning || !Files.isDirectory(nativesDir)) {
-			NativesExtractor.prepare(nativesDir, vanillaLibraries, fabricLibraries);
+			nativesDir = NativesExtractor.prepare(nativesDir, vanillaLibraries, fabricLibraries); // a fresh natives-<stamp> folder if lwjgl.dll is locked
 		}
 		listener.onProgress(1.0);
 
