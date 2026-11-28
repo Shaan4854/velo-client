@@ -1,4 +1,4 @@
-# STATUS (final wrap-up, 2026-11-28 ~13:55 IST)
+# STATUS (final wrap-up, 2026-11-28 ~14:40 IST, v1.6.2)
 
 Cold start for a fresh agent. Details and design are in `context.md`.
 
@@ -6,9 +6,9 @@ Cold start for a fresh agent. Details and design are in `context.md`.
 Fork `Shaan4854/velo-client` of upstream `velo345/velo-client` (Velo Client, Minecraft mod + launcher). Owner: Shaan. Three custom features must survive every sync: offline accounts (no Advent for offline), offline cosmetics (Velo cloak with local skins), and the auto-updater pointing at `Shaan4854/velo-client`. Hard rules: never delete, recreate or detach the repo, never force-push.
 
 ## State
-- `main` = upstream 1.6.0 merged + his three features + the Cloudflare Workers backend (`workers-backend/`) + live default URL. Version 1.6.1 (launcher + mod).
-- Release: https://github.com/Shaan4854/velo-client/releases/tag/v1.6.1 (tag at c432f4f, 10 installers: Windows exe x2 + zip, macOS arm64/x64 dmg + zip, Linux tar.gz/deb/zip). v1.6.0 release stays too.
-- Backend: Worker `velo-fork`, https://velo-fork.shaaanansari786.workers.dev, free tier, one SQLite Durable Object, no WebSockets. Current version cbd6195d (session TTL 90 s). main has the same source (b5771f1).
+- `main` = upstream 1.6.0 merged + his three features + the Cloudflare Workers backend (`workers-backend/`) + live default URL. Version 1.6.2 (launcher + mod).
+- Latest release: https://github.com/Shaan4854/velo-client/releases/tag/v1.6.2 (tag at main 90ebabf, 10 installers: Windows exe x2 + zip, macOS arm64/x64 dmg + zip, Linux tar.gz/deb/zip). v1.6.1 (c432f4f) and v1.6.0 stay too. 1.6.2 = v1.6.1 + one change: the client sends /v1/session/end when the game exits.
+- Backend: Worker `velo-fork`, https://velo-fork.shaaanansari786.workers.dev, free tier, one SQLite Durable Object, no WebSockets. Current version cbd6195d (session TTL 90 s). main has the same source.
 - `ci/screenshot` = throwaway test branch (screenshot tour, two-client SocialTest, CI-only overrides). Keep until the owner or Leader says delete. Never merge it into main.
 
 ## Redeploy the Worker
@@ -26,11 +26,13 @@ Fork `Shaan4854/velo-client` of upstream `velo345/velo-client` (Velo Client, Min
 | Emote via heartbeat: live list shows it, 2nd client plays it | PASS | .../runs/46123043373 |
 | Client restart: friend list + party intact | PASS | .../runs/46124123933 |
 | Hard-killed client shows offline after ~91 s (TTL 90 s) | PASS | .../runs/46124123933 |
-| Main build check (4 OS) | green | .../runs/46118366423 |
+| Main build check (4 OS) | green | .../runs/46118366423 (1.6.1), .../runs/46125372298 (1.6.2) |
+| Graceful quit shows offline in ~6 s (1.6.2 fix) | PASS | .../runs/46125373898 |
 | v1.6.1 release build (4 OS, Windows re-run once after a flaky legacy-jar step) | green | .../runs/46119994583 |
+| v1.6.2 release build (4 OS, 10 assets) | green | .../runs/46127107721 |
 
 ## Known gaps
-- Graceful game exit does NOT call `/v1/session/end` (only module disable does), so a friend shows online up to 90 s after a normal quit. Fix = hook the game-stop event to `VeloServerClient.stop()`; needs a client release (1.6.2). Not done, awaiting owner's decision.
+- FIXED in 1.6.2: graceful game exit now calls /v1/session/end (CLIENT_STOPPING -> VeloServerClient.stopOnGameExit, 2 s max wait). Proof: run 46125373898, a friend saw the other client offline ~6 s after a normal quit (before: still online after 60 s). A killed/crashed game still shows online until the 90 s session TTL (measured 87-91 s).
 - Not verified: the installers on real desktops; two real players in the same world seeing each other's cloak/emote pixels (data paths verified, not rendering); long-run free-tier usage (100k requests/day) with many players.
 - Locker offline-cosmetics grid was shot with a CI-only override (`velo.ciOfflineSession`, ci/screenshot only) because the game's offline-session check is false in a dev environment.
 - Offline identity is trust on first use; Microsoft-verified names are reserved.

@@ -159,3 +159,6 @@ Main = upstream 1.6.0 merge + Workers backend (workers-backend/) + live default 
 
 ## Final wrap-up (2026-11-28)
 See STATUS.md for state, redeploy recipe, test run IDs and known gaps. Session TTL is now 90 s (was 240 s); heartbeat 60 s unchanged. Vault note: the "Cloudflare API token - velo deploy" username field holds "account:<id>"; strip the prefix before use as CLOUDFLARE_ACCOUNT_ID.
+
+## v1.6.2 (2026-11-28)
+One change over 1.6.1: on game exit the client ends its Velo session (VeloServerClient.stopOnGameExit, hooked on CLIENT_STOPPING in VeloClientMod). Release https://github.com/Shaan4854/velo-client/releases/tag/v1.6.2, tag at main 90ebabf. See STATUS.md for proof run IDs and known limits (poll-based emote delay 2-8 s, killed game offline after ~90 s, installers not run on real desktops, no real-player verification).
