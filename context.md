@@ -44,7 +44,7 @@ Fork users, offline and Microsoft, should see each other's cosmetics, friends an
 |---|---|
 | Cloudflare Workers + Durable Objects, not a VM or Tunnel | Owner wants no VM to babysit and no home machine online. Workers free tier has no idle cost and a free `workers.dev` domain. A Tunnel needs an always-on machine. |
 | No WebSockets | Free-tier Durable Object duration (13,000 GB-s/day) and request counts do not tolerate held connections for a group. Plain HTTP polling is cheap and the Java client already polls. |
-| Throttled intervals: heartbeat 60 s, session TTL 240 s, online poll 20 s (adaptive), launcher poll 30 s | Free limit is 100k requests/day on Workers and on DO. Original intervals (heartbeat 20 s, poll 5 s) would use it up with a few dozen users. The server advertises the intervals; clients honor them. |
+| Throttled intervals: heartbeat 60 s, session TTL 90 s, online poll 20 s (adaptive), launcher poll 30 s | Free limit is 100k requests/day on Workers and on DO. Original intervals (heartbeat 20 s, poll 5 s) would use it up with a few dozen users. The server advertises the intervals; clients honor them. |
 | Delta feed for `/v1/online` (`?since=version`) | Most polls return an empty delta: tiny responses and fewer rows read. |
 | Durable Object with SQLite storage, not D1 | Free plan only offers SQLite-backed DOs. A single registry DO keeps sessions in memory with SQLite write-through, so most reads cost no rows. Row quotas (5M read, 100k written/day) are not the bottleneck. D1 would add a network hop per query for no gain at this scale. |
 | One global `RegistryDO` for sessions, presence, capes, social and party | Presence must be consistent for everyone, and friends/party need live presence checks, which are plain function calls inside one object. At roughly 50 users with throttling one object is enough (a DO handles about 1,000 requests/s; we expect well under 5/s). Social and party are separate TypeScript modules (`social.ts`, `party.ts`) so they can move to their own DOs later if needed. |
@@ -92,7 +92,7 @@ sequenceDiagram
     C->>W: POST /v1/session/verify
     W->>J: hasJoined(username, serverId)
     J-->>W: profile ok
-    W-->>C: {sessionToken, heartbeatIntervalSeconds=60, sessionTtlSeconds=240}
+    W-->>C: {sessionToken, heartbeatIntervalSeconds=60, sessionTtlSeconds=90}
   else Offline account (TOFU)
     C->>W: POST /v1/session/offline-claim {uuid, username, secret, kind}
     W->>W: uuid == offlineUuid(name)? secret matches or first claim?

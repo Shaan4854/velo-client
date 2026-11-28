@@ -7,7 +7,7 @@ import { Parties, STORAGE_MAX_CHARS } from "./party";
 import { Social, SocialError, POLL_AFTER_MS } from "./social";
 
 const PARTY_POLL_AFTER_MS = 8_000; // inside a party chat/pings need to feel live
-const SESSION_TTL_MS = 240_000;
+const SESSION_TTL_MS = 90_000;
 const HEARTBEAT_INTERVAL_S = 60;
 const CHALLENGE_TTL_MS = 60_000;
 const MAX_CAPE_BYTES = 1_900_000; // a Durable Object SQLite row tops out near 2 MB
