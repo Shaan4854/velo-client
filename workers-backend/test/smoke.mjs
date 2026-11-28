@@ -66,5 +66,20 @@ r = await post("/v1/cosmetics/of", { uuids: [uuid] });
 ok(r.j.users.some((u) => u.uuid === uuid), "last look is still served for offline players");
 r = await post("/v1/heartbeat", { sessionToken: token });
 ok(r.s === 401, "heartbeat after end asks to re-authenticate");
+// Public catalog reads must also work when the client sends its session token (it always does once logged in).
+{
+  const anon = await fetch(BASE + "/v1/cosmetics/catalog");
+  if (anon.status === 200) {
+    const withAuth = await fetch(BASE + "/v1/cosmetics/catalog", { headers: { authorization: "Bearer x" } });
+    ok(withAuth.status === 200, "catalog with a Bearer header is served");
+    const cj = withAuth.status === 200 ? await withAuth.json() : { items: [] };
+    ok(cj.items.length >= 100 && cj.items.filter((i) => i.type === "emote").length >= 7, "catalog has items and the 7 emotes (" + cj.items.length + ")");
+    const sha = cj.items.find((i) => i.id === "emote_wave")?.files?.anim;
+    const fr = await fetch(BASE + "/v1/cosmetics/file/" + sha, { headers: { authorization: "Bearer x" } });
+    ok(fr.status === 200 && createHash("sha256").update(Buffer.from(await fr.arrayBuffer())).digest("hex") === sha, "emote file with a Bearer header downloads and matches its hash");
+    const st = await fetch(BASE + "/v1/staff/anything", { headers: { authorization: "Bearer x" } });
+    ok(st.status === 404, "staff paths stay closed");
+  } else console.log("SKIP catalog checks (no upstream configured here)");
+}
 console.log(fails ? fails + " FAILED" : "ALL PASSED");
 process.exit(fails ? 1 : 0);
