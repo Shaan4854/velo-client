@@ -3,6 +3,10 @@
 // what must survive an eviction. Sessions are only re-written when something changes, an expired one
 // simply makes the client sign in again (it already handles a 401 that way).
 
+import { Parties, STORAGE_MAX_CHARS } from "./party";
+import { Social, SocialError, POLL_AFTER_MS } from "./social";
+
+const PARTY_POLL_AFTER_MS = 8_000; // inside a party chat/pings need to feel live
 const SESSION_TTL_MS = 240_000;
 const HEARTBEAT_INTERVAL_S = 60;
 const CHALLENGE_TTL_MS = 60_000;
@@ -90,6 +94,8 @@ const cleanId = (v: unknown, max = 120): string | null =>
 
 export class RegistryDO {
   private sql: SqlStorage;
+  private social: Social;
+  private parties: Parties;
   private sessions = new Map<string, Session>();
   private challenges = new Map<string, Challenge>();
   private lastLooks = new Map<string, { capeId: string | null; wingsId: string | null; auraId: string | null; wear: string | null; pet: string | null }>();
@@ -97,6 +103,7 @@ export class RegistryDO {
   private rate = new Map<string, number[]>();
   private seenToday = new Set<string>();
   private seenDay = "";
+  private lastLimitSweep = 0;
 
   // online feed (version bumps on any visible change)
   private version = Date.now();
@@ -107,6 +114,8 @@ export class RegistryDO {
 
   constructor(private state: DurableObjectState, private env: unknown) {
     this.sql = state.storage.sql;
+    this.social = new Social(this.sql, { hasLive: (u, k) => this.hasLive(u, k) });
+    this.parties = new Parties(this.social);
     state.blockConcurrencyWhile(async () => {
       this.sql.exec(`CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, data TEXT NOT NULL)`);
       this.sql.exec(`CREATE TABLE IF NOT EXISTS mc_names (lname TEXT PRIMARY KEY, uuid TEXT NOT NULL)`);
@@ -128,9 +137,11 @@ export class RegistryDO {
       this.sweep();
       return await this.route(request);
     } catch (e) {
-      if (e instanceof HttpError) return json(e.status, { error: e.message });
+      if (e instanceof HttpError || e instanceof SocialError) return json(e.status, { error: e.message });
       console.error(e);
       return json(500, { error: "Internal server error" });
+    } finally {
+      this.social.flush();
     }
   }
 
@@ -183,7 +194,149 @@ export class RegistryDO {
         need("POST");
         return this.capeRemove(request);
     }
+    if (path.startsWith("/v1/social/")) return this.socialRoute(request, url, path);
+    if (path.startsWith("/v1/party/")) return this.partyRoute(request, url, path);
     if (path.startsWith("/v1/cape/") && method === "GET") return this.capeDownload(path.slice("/v1/cape/".length));
+    throw new HttpError(404, "Not found");
+  }
+
+  // ---------------------------------------------------------------- social
+
+  private authed(request: Request): string {
+    const token = this.bearer(request);
+    const s = this.session(token);
+    if (!s) throw new HttpError(401, "Unknown or expired session - re-authenticate");
+    s.expires = Date.now() + SESSION_TTL_MS;
+    return s.uuid;
+  }
+
+  private async socialRoute(request: Request, url: URL, path: string): Promise<Response> {
+    const me = this.authed(request);
+    const ok = json(200, { ok: true });
+    const get = path === "/v1/social/state" || path === "/v1/social/poll" || path === "/v1/social/messages";
+    if (request.method !== (get ? "GET" : "POST")) throw new HttpError(405, "Method not allowed");
+    const needUuid = (v: unknown): string => {
+      const n = normalizeUuid(v);
+      if (!n) throw new SocialError(400, "A valid player uuid is required");
+      return n;
+    };
+    if (get) {
+      if (path === "/v1/social/state") return json(200, this.social.state(me));
+      if (path === "/v1/social/poll") return json(200, this.social.poll(me, Number(url.searchParams.get("since") ?? "0") || 0, this.parties.inParty(me) ? PARTY_POLL_AFTER_MS : POLL_AFTER_MS), { "cache-control": "no-store" });
+      const withU = normalizeUuid(url.searchParams.get("with"));
+      if (!withU) throw new HttpError(400, "with is required");
+      return json(200, this.social.messages(me, withU, Number(url.searchParams.get("before") ?? "0") || 0));
+    }
+    const b = await this.body(request);
+    switch (path) {
+      case "/v1/social/request": {
+        const ref = await this.social.sendRequest(me, b.target);
+        return json(200, { ok: true, uuid: ref.uuid, username: ref.username });
+      }
+      case "/v1/social/respond":
+        this.social.respond(me, needUuid(b.uuid), b.accept === true);
+        return ok;
+      case "/v1/social/cancel":
+        this.social.cancelRequest(me, needUuid(b.uuid));
+        return ok;
+      case "/v1/social/unfriend":
+        this.social.unfriend(me, needUuid(b.uuid));
+        return ok;
+      case "/v1/social/block":
+        await this.social.block(me, b.target);
+        return ok;
+      case "/v1/social/unblock":
+        this.social.unblock(me, needUuid(b.uuid));
+        return ok;
+      case "/v1/social/status":
+        this.social.setInvisible(me, b.invisible === true);
+        return ok;
+      case "/v1/social/presence":
+        this.social.setPresence(me, b.kind, b.detail);
+        return ok;
+      case "/v1/social/message":
+        return json(200, this.social.sendMessage(me, needUuid(b.to), b.text));
+      case "/v1/social/read":
+        this.social.markRead(me, needUuid(b.uuid));
+        return ok;
+      case "/v1/social/share-waypoint": {
+        if (!Array.isArray(b.to) || b.to.length === 0) throw new HttpError(400, "Pick at least one friend");
+        this.social.shareWaypoint(me, b.to.map(needUuid), b.waypoint as Record<string, unknown> | undefined);
+        return ok;
+      }
+    }
+    throw new HttpError(404, "Not found");
+  }
+
+  private async partyRoute(request: Request, url: URL, path: string): Promise<Response> {
+    const me = this.authed(request);
+    const ok = json(200, { ok: true });
+    const get = path === "/v1/party/state" || path === "/v1/party/positions" || path === "/v1/party/storage-shares";
+    if (request.method !== (get ? "GET" : "POST")) throw new HttpError(405, "Method not allowed");
+    const needUuid = (v: unknown): string => {
+      const n = normalizeUuid(v);
+      if (!n) throw new SocialError(400, "A valid player uuid is required");
+      return n;
+    };
+    if (get) {
+      if (path === "/v1/party/state") return json(200, this.parties.state(me));
+      if (path === "/v1/party/positions") return json(200, this.parties.positions(me));
+      return json(200, this.parties.storage(me, Number(url.searchParams.get("since") ?? "0") || 0));
+    }
+    const b = await this.body(request);
+    const payload = (b.payload && typeof b.payload === "object" ? b.payload : null) as Record<string, unknown> | null;
+    switch (path) {
+      case "/v1/party/create":
+        return json(200, this.parties.create(me));
+      case "/v1/party/invite": {
+        const ref = await this.social.resolve(b.target);
+        return json(200, this.parties.invite(me, ref.uuid));
+      }
+      case "/v1/party/respond":
+        this.parties.respond(me, b.party, b.accept === true);
+        return json(200, this.parties.state(me));
+      case "/v1/party/leave":
+        this.parties.leave(me);
+        return ok;
+      case "/v1/party/kick":
+        this.parties.kick(me, needUuid(b.uuid));
+        return ok;
+      case "/v1/party/transfer":
+        this.parties.transfer(me, needUuid(b.uuid));
+        return ok;
+      case "/v1/party/sync":
+        this.parties.setSync(me, (b.sync && typeof b.sync === "object" ? b.sync : null) as Record<string, unknown> | null);
+        return ok;
+      case "/v1/party/launch":
+        this.parties.launch(me, b.server, b.mcVersion);
+        return ok;
+      case "/v1/party/voice":
+        this.parties.setVoice(me, b.name, b.password);
+        return ok;
+      case "/v1/party/follow":
+        this.parties.follow(me, b.server, b.serverName);
+        return ok;
+      case "/v1/party/chat":
+        return json(200, this.parties.chat(me, b.text));
+      case "/v1/party/ping":
+        this.parties.share(me, "ping", payload);
+        return ok;
+      case "/v1/party/position":
+        this.parties.setPosition(me, payload);
+        return ok;
+      case "/v1/party/storage-share":
+        this.parties.setStorage(me, b.server, b.world, b.data);
+        return ok;
+      case "/v1/party/emote": {
+        const id = payload?.name;
+        if (typeof id !== "string" || !/^[a-z0-9_]{1,40}$/.test(id)) throw new HttpError(403, "You don't own that emote");
+        this.parties.share(me, "emote", payload);
+        return ok;
+      }
+      case "/v1/party/waypoint":
+        this.parties.share(me, "waypoint", payload);
+        return ok;
+    }
     throw new HttpError(404, "Not found");
   }
 
@@ -213,11 +366,19 @@ export class RegistryDO {
       this.seenDay = day;
       this.seenToday.clear();
     }
+    const gone = new Set<string>();
     for (const [token, s] of this.sessions) {
       if (s.expires < now) {
         this.sessions.delete(token);
         this.sql.exec(`DELETE FROM sessions WHERE token = ?`, token);
+        gone.add(s.uuid);
       }
+    }
+    for (const u of gone) this.social.refreshPresence(u);
+    if (now - this.lastLimitSweep > 600_000) {
+      this.lastLimitSweep = now;
+      this.social.sweepLimits();
+      this.parties.sweep();
     }
     for (const [id, c] of this.challenges) if (c.expires < now) this.challenges.delete(id);
     if (this.rate.size > 2000) this.rate.clear();
@@ -298,6 +459,7 @@ export class RegistryDO {
     this.sessions.set(token, s);
     this.persist(token, s);
     this.seenToday.add(uuid);
+    this.social.onAuthenticated(uuid, username);
     return { sessionToken: token, heartbeatIntervalSeconds: HEARTBEAT_INTERVAL_S, sessionTtlSeconds: SESSION_TTL_MS / 1000 };
   }
 
@@ -306,7 +468,17 @@ export class RegistryDO {
   }
 
   private endSession(token: string): void {
-    if (this.sessions.delete(token)) this.sql.exec(`DELETE FROM sessions WHERE token = ?`, token);
+    const s = this.sessions.get(token);
+    if (this.sessions.delete(token)) {
+      this.sql.exec(`DELETE FROM sessions WHERE token = ?`, token);
+      if (s) this.social.refreshPresence(s.uuid);
+    }
+  }
+
+  hasLive(uuid: string, kind: Kind): boolean {
+    const now = Date.now();
+    for (const s of this.sessions.values()) if (s.uuid === uuid && s.kind === kind && s.expires >= now) return true;
+    return false;
   }
 
   private endGameSessions(launcherToken: string): void {

@@ -47,7 +47,9 @@ Fork users, offline and Microsoft, should see each other's cosmetics, friends an
 | Throttled intervals: heartbeat 60 s, session TTL 240 s, online poll 20 s (adaptive), launcher poll 30 s | Free limit is 100k requests/day on Workers and on DO. Original intervals (heartbeat 20 s, poll 5 s) would use it up with a few dozen users. The server advertises the intervals; clients honor them. |
 | Delta feed for `/v1/online` (`?since=version`) | Most polls return an empty delta: tiny responses and fewer rows read. |
 | Durable Object with SQLite storage, not D1 | Free plan only offers SQLite-backed DOs. A single registry DO keeps sessions in memory with SQLite write-through, so most reads cost no rows. Row quotas (5M read, 100k written/day) are not the bottleneck. D1 would add a network hop per query for no gain at this scale. |
-| One global `RegistryDO` for sessions/presence/capes | Presence must be consistent for everyone. At roughly 50 users with throttling this fits well inside one object. Social and party get their own DOs (M3). |
+| One global `RegistryDO` for sessions, presence, capes, social and party | Presence must be consistent for everyone, and friends/party need live presence checks, which are plain function calls inside one object. At roughly 50 users with throttling one object is enough (a DO handles about 1,000 requests/s; we expect well under 5/s). Social and party are separate TypeScript modules (`social.ts`, `party.ts`) so they can move to their own DOs later if needed. |
+| No long-poll for social events | Upstream holds `/v1/social/poll` open for 25 s. Held requests would bill duration on the free plan. The Worker answers at once with `pollAfterMs`: 30 s normally, 8 s while the player is in a party (chat and pings need to feel live). The client must honor `pollAfterMs` (M4). |
+| Social data stored as key/value rows; parties in memory only | Friends/requests/blocks/read markers are one `core` row, each conversation is its own row, written only when changed. Parties were never persisted upstream; they end when everybody leaves or nobody is online. |
 | Offline identity is trust on first use (TOFU) | Offline names have no authority to prove them. First claim of a name stores a hash of a client-generated secret; later claims need the same secret. The server also checks that the UUID equals the offline UUID of the name (MD5 of `OfflinePlayer:<name>`). Not strong security; stops casual impersonation. |
 | Microsoft-verified names are reserved | A Microsoft verification (Mojang `hasJoined`) records the name as taken and deletes any offline claim on it, so an offline player cannot hold a name that a real account owns. |
 | Cape limits: PNG only, at most 1.9 MB, width a multiple of 64 and at most 2048, height at most 1024, 2:1 or 1:1, one per player | Keeps storage and egress small on the free tier and matches what the renderer accepts. Capes are content-addressed and served with `immutable` cache headers so each download is cached. |
@@ -70,9 +72,9 @@ flowchart LR
   end
   M -- HTTPS --> W[Cloudflare Worker router]
   L -- HTTPS --> W
-  W --> R[(RegistryDO: sessions, presence, capes, offline claims)]
-  W --> S[(SocialDO: friends, DMs, requests) - M3]
-  W --> P[(PartyDO: parties - M3)]
+  W --> R[(RegistryDO: sessions, presence, capes, offline claims, social, parties)]
+  R --- S[Social module: friends, DMs, requests, blocks]
+  R --- P[Party module: parties, chat, pings, positions]
   R -. Microsoft login only .-> J[Mojang hasJoined]
 ```
 
@@ -127,7 +129,7 @@ flowchart TD
 
 - M1 limits and design: done.
 - M2 session and presence/cosmetics core in TypeScript, tested with `wrangler dev`: done on this branch (19 smoke checks pass, `workers-backend/test/smoke.mjs`).
-- M3 social and party routes plus stubs: next.
+- M3 social (14 routes) and party (20 routes) ported (`social.ts`, `party.ts`, tests in `test/social.mjs`, 28 checks pass). Stubs for other client-called routes (store, plus, rewards, worlds, notes, etc.): decided in M4 after checking how the client reacts to 404.
 - M4 client patches (default server URL, offline TOFU login in `VeloServerClient` and `LauncherSocial`, `OfflineCosmetics` coexistence, throttled intervals, emote fast poll), compile all targets.
 - M5 deploy with `wrangler deploy` after the owner's Cloudflare login, then a test release build. The owner approves any release.
 
@@ -137,5 +139,6 @@ cd workers-backend
 npm install
 npx wrangler dev --port 8799 --local
 BASE=http://localhost:8799 node test/smoke.mjs
+BASE=http://localhost:8799 node test/social.mjs
 ```
 Sandbox notes: 1 CPU, 2 GB RAM. Mod/launcher builds need JDK 25 with `--no-daemon --no-configuration-cache --configure-on-demand --no-parallel -Dorg.gradle.jvmargs=-Xmx1400m`.
