@@ -1,4 +1,4 @@
-# STATUS (2026-11-28 ~21:15 IST, v1.7.0)
+# STATUS (2026-11-28 ~21:15 IST, v1.6.3)
 
 Cold start for a fresh agent. Details and design are in `context.md`.
 
@@ -6,10 +6,10 @@ Cold start for a fresh agent. Details and design are in `context.md`.
 Fork `Shaan4854/velo-client` of upstream `velo345/velo-client` (Velo Client, Minecraft mod + launcher). Owner: Shaan. Three custom features must survive every sync: offline accounts (no Advent for offline), offline cosmetics (Velo cloak with local skins), and the auto-updater pointing at `Shaan4854/velo-client`. Hard rules: never delete, recreate or detach the repo, never force-push.
 
 ## State
-- `main` = upstream 1.6.0 merged + his three features + the Cloudflare Workers backend (`workers-backend/`) + live default URL. Version 1.7.0 (launcher + mod).
-- Latest release: https://github.com/Shaan4854/velo-client/releases/tag/v1.7.0 (v1.7.0 = v1.6.2 + WebSocket realtime, natives/lwjgl lock fix, offline-account self-heal; see section v1.7.0 below). Previous: https://github.com/Shaan4854/velo-client/releases/tag/v1.6.2 (tag at main 90ebabf, 10 installers: Windows exe x2 + zip, macOS arm64/x64 dmg + zip, Linux tar.gz/deb/zip). v1.6.1 (c432f4f) and v1.6.0 stay too. 1.6.2 = v1.6.1 + one change: the client sends /v1/session/end when the game exits.
+- `main` = upstream 1.6.0 merged + his three features + the Cloudflare Workers backend (`workers-backend/`) + live default URL. Version 1.6.3 (launcher + mod).
+- Latest release: https://github.com/Shaan4854/velo-client/releases/tag/v1.6.3 (v1.6.3 (first called v1.6.3 internally; renamed at the owner's request, same code) = v1.6.2 + WebSocket realtime, natives/lwjgl lock fix, offline-account self-heal; see section v1.6.3 below). Previous: https://github.com/Shaan4854/velo-client/releases/tag/v1.6.2 (tag at main 90ebabf, 10 installers: Windows exe x2 + zip, macOS arm64/x64 dmg + zip, Linux tar.gz/deb/zip). v1.6.1 (c432f4f) and v1.6.0 stay too. 1.6.2 = v1.6.1 + one change: the client sends /v1/session/end when the game exits.
 - Backend: Worker `velo-fork`, https://velo-fork.shaaanansari786.workers.dev, free tier, one SQLite Durable Object with hibernation WebSocket nudges (/v1/ws). Current version 7cfe80a0-1c78-4364-a0cf-fea109c34d9e (WebSocket + catalog Authorization fix, session TTL 90 s). main has the same source.
-- `ci/realtime` = throwaway test branch for v1.7.0 (two-client delay test, launcher tests, CI overrides). Keep until told to delete. `feat/restore-emotes` = ready-to-use restore of the 24 emotes upstream 1.6.0 removed (see below), NOT in any release. `fix/fps-defaults` = a one-line default change (Throttle Hidden Window off), dropped by the owner, NOT merged.
+- `ci/realtime` = throwaway test branch for v1.6.3 (two-client delay test, launcher tests, CI overrides). Keep until told to delete. `feat/restore-emotes` = ready-to-use restore of the 24 emotes upstream 1.6.0 removed (see below), NOT in any release. `fix/fps-defaults` = a one-line default change (Throttle Hidden Window off), dropped by the owner, NOT merged.
 - `ci/screenshot` = throwaway test branch (screenshot tour, two-client SocialTest, CI-only overrides). Keep until the owner or Leader says delete. Never merge it into main.
 
 ## Redeploy the Worker
@@ -39,10 +39,10 @@ Fork `Shaan4854/velo-client` of upstream `velo345/velo-client` (Velo Client, Min
 - Offline identity is trust on first use; Microsoft-verified names are reserved.
 - The Worker proxies anonymous public GETs to upstream (https://api.velo-client.com) with a 10 min cache; owner decided to keep it on.
 - OfflineCosmetics.java carries an upstream comment "used with permission from founder Velo2k". The owner's rights claim is unverified (see context.md).
-- Emotes and social: v1.7.0 adds the WebSocket nudge (about 0.4 s), the polling path stays as fallback (about 7 s) and as a 90 s safety net while the socket is up. Killed games still show online up to 90 s.
+- Emotes and social: v1.6.3 adds the WebSocket nudge (about 0.4 s), the polling path stays as fallback (about 7 s) and as a 90 s safety net while the socket is up. Killed games still show online up to 90 s.
 - Worker `/v1/store/*` answers 404 (the proxy only does anonymous public reads; store state and wallet need a session). Offline cosmetics bypasses it, so nobody notices today; Microsoft-account fork users would see no store or wallet state. Parked on purpose.
 
-## v1.7.0 (2026-11-28)
+## v1.6.3 (2026-11-28)
 Scope: WebSocket realtime + natives/lwjgl lock fix + offline-account self-heal + Worker catalog Authorization fix. rc/1.7.0 is the release candidate branch.
 - WebSocket: Worker `/v1/ws` (Bearer session, hibernation Durable Object) sends only nudges `{"t":"online"}` / `{"t":"social"}`; the client (VeloRealtime) then runs its normal HTTP reads. Session response carries `realtime:true`. `-Dvelo.noRealtime=true` turns it off. Polling stays as the fallback.
 - Measured in the same CI harness against the live Worker, 5 trials each, emote from client A to client B (time from A starting the emote to B seeing it): WebSocket 427-443 ms (run 46156314458); polling 2.6-7.8 s, median 7.4 s (run 46159773221). Live Worker script test (realtime.mjs): median 188 ms. Earlier harness runs (46151062853, 46151064737, 46152141577, 46153811554, 46154887769, 46157202569) are not valid or failed (test bugs / name collision) and must not be quoted.
