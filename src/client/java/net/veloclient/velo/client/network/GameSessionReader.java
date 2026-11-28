@@ -41,6 +41,31 @@ final class GameSessionReader {
 		}
 	}
 
+	/**
+	 * The game's own uuid and name when it runs without a real Microsoft token (an offline account, or a dev run).
+	 * The fork's backend signs these in with a trust-on-first-use claim instead of Mojang.
+	 */
+	static Optional<ActiveAccountReader.Account> readOffline() {
+		try {
+			//? if <26.1 {
+			net.minecraft.client.session.Session session = net.minecraft.client.MinecraftClient.getInstance().getSession();
+			UUID uuid = session.getUuidOrNull();
+			String username = session.getUsername();
+			//?} else {
+			/*net.minecraft.client.User session = net.minecraft.client.Minecraft.getInstance().getUser();
+			UUID uuid = session.getProfileId();
+			String username = session.getName();
+			*///?}
+			String accessToken = session.getAccessToken();
+			if (uuid == null || username == null || !username.matches("[a-zA-Z0-9_]{1,16}") || (accessToken != null && accessToken.length() >= 32)) {
+				return Optional.empty();
+			}
+			return Optional.of(new ActiveAccountReader.Account(VeloServerClient.normalizeUuid(uuid.toString()), username, "", Long.MAX_VALUE));
+		} catch (RuntimeException e) {
+			return Optional.empty();
+		}
+	}
+
 	/** Empty for offline/dev sessions, whose placeholder tokens Mojang would reject anyway. */
 	static Optional<ActiveAccountReader.Account> read() {
 		try {

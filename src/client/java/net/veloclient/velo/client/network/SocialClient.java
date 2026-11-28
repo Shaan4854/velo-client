@@ -238,6 +238,9 @@ public final class SocialClient {
 					continue;
 				}
 				since = result.get("seq").getAsLong();
+				// Fork backend answers at once and says when to ask again (30 s, 8 s in a party); the official server
+				// long-polls and sends no hint.
+				long pollAfter = result.has("pollAfterMs") && result.get("pollAfterMs").isJsonPrimitive() ? result.get("pollAfterMs").getAsLong() : 0;
 				boolean reload = false;
 				for (JsonElement element : result.getAsJsonArray("events")) {
 					reload |= handleEvent(element.getAsJsonObject());
@@ -245,6 +248,9 @@ public final class SocialClient {
 				if (reload) {
 					reloadState();
 					publish(new Event("state", null, null, null, null));
+				}
+				if (pollAfter > 0) {
+					sleepQuietly(Math.min(pollAfter, 60_000));
 				}
 			} catch (InterruptedException e) {
 				if (!running) {

@@ -130,7 +130,13 @@ flowchart TD
 - M1 limits and design: done.
 - M2 session and presence/cosmetics core in TypeScript, tested with `wrangler dev`: done on this branch (19 smoke checks pass, `workers-backend/test/smoke.mjs`).
 - M3 social (14 routes) and party (20 routes) ported (`social.ts`, `party.ts`, tests in `test/social.mjs`, 28 checks pass). Stubs for other client-called routes (store, plus, rewards, worlds, notes, etc.): decided in M4 after checking how the client reacts to 404.
-- M4 client patches (default server URL, offline TOFU login in `VeloServerClient` and `LauncherSocial`, `OfflineCosmetics` coexistence, throttled intervals, emote fast poll), compile all targets.
+- M4 client patches: done and compiled (launcher compile + tests, mod 1.21.11 and 1.21.1; the other versions go through Actions). What changed:
+  - Default server URL is `VeloNetworkConfig.DEFAULT_SERVER_URL` / `LauncherSocial.DEFAULT_SERVER_URL` (placeholder `https://velo-fork-backend.workers.dev`, set at M5). `network.json` entries naming the upstream server follow the move. `-Dvelo.serverUrl=` overrides it in the mod too (used for tests against `wrangler dev`).
+  - Offline sign-in: `VeloServerClient.tryOfflineClaim` and `LauncherSocial.authenticateOffline` call `/v1/session/offline-claim` with the uuid, name and a per-install secret (`OfflineIdentity`, file `offline-identity.key`). The launcher passes its secret to offline games as `-Dvelo.offlineSecret` so launcher and game claim the same name with the same secret.
+  - `OfflineCosmetics` gate: an offline-claim session no longer switches the local unlock off (`VeloServerClient.sessionTokenForOfflineGate()`), so the Locker stays unlocked while the player is online-visible. Microsoft sessions still switch it off.
+  - Intervals: mod heartbeat follows the server's advertised period (60 s; clamped 20 to 300 s); online poll 8 s while other Velo players are online, 20 s alone; social polls (mod and launcher) follow `pollAfterMs` instead of long-polling; emotes older than 8 s on the server clock are skipped.
+  - The Worker proxies anonymous public GETs it does not own (store catalog, art, news) to `UPSTREAM_BASE` with a 10 minute cache, because the client loads the store catalog from its configured server. Anything else it does not own returns 404 `{"error":"Not available on this server"}`. This keeps the same read-only requests to upstream that every fork client already made; set `UPSTREAM_BASE` empty to turn it off. Decision for the owner.
+- Test aid: `.github/workflows/client-screenshot.yml` (manual dispatch only) boots the mod under Xvfb with Mesa software GL against a local `wrangler dev`, saves screenshots, and fails if the client did not appear in `/v1/online`.
 - M5 deploy with `wrangler deploy` after the owner's Cloudflare login, then a test release build. The owner approves any release.
 
 ## 7. How to run the backend locally

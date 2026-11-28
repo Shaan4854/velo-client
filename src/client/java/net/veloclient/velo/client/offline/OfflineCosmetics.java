@@ -42,7 +42,7 @@ public final class OfflineCosmetics {
 			if (!"true".equals(flag)) {
 				return false; // every Microsoft launch, and offline launches with the toggle off
 			}
-			String token = VeloServerClient.sessionToken();
+			String token = VeloServerClient.sessionTokenForOfflineGate(); // an offline claim is not a Microsoft session
 			if (token != null) {
 				return false; // checked on every call: a cached "true" never outlives a Velo session
 			}

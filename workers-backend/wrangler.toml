@@ -9,3 +9,6 @@ class_name = "RegistryDO"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["RegistryDO"]
+
+[vars]
+UPSTREAM_BASE = "https://api.velo-client.com"

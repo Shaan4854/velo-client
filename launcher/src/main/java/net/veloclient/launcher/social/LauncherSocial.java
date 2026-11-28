@@ -37,9 +37,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public final class LauncherSocial {
 
-	public static final String DEFAULT_SERVER_URL = "https://api.velo-client.com";
+	public static final String DEFAULT_SERVER_URL = "https://velo-fork-backend.workers.dev"; // set to the deployed Worker in M5
 	/** The official server's old address - a saved {@code network.json} still naming it follows the move. */
-	private static final java.util.Set<String> LEGACY_SERVER_URLS = java.util.Set.of("https://client.asteriasmp.net", "http://client.asteriasmp.net");
+	private static final java.util.Set<String> LEGACY_SERVER_URLS = java.util.Set.of("https://client.asteriasmp.net", "http://client.asteriasmp.net", "https://api.velo-client.com");
 
 	private static final Gson GSON = new Gson();
 	private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
@@ -329,7 +329,7 @@ public final class LauncherSocial {
 					publish(new Event("connected", null, null, null, null));
 				}
 				boolean idleNow = isWindowIdle();
-				if (System.currentTimeMillis() - lastHeartbeat > 30_000 || idleNow != lastIdleSent) {
+				if (System.currentTimeMillis() - lastHeartbeat > heartbeatMillis || idleNow != lastIdleSent) {
 					JsonObject body = new JsonObject();
 					body.addProperty("sessionToken", token);
 					body.addProperty("idle", idleNow);
@@ -356,6 +356,9 @@ public final class LauncherSocial {
 					continue;
 				}
 				since = result.get("seq").getAsLong();
+				// Fork backend answers at once and says when to ask again (30 s, 8 s in a party); the official server
+				// long-polls and sends no hint, so there is nothing to wait for.
+				long pollAfter = result.has("pollAfterMs") && result.get("pollAfterMs").isJsonPrimitive() ? result.get("pollAfterMs").getAsLong() : 0;
 				boolean reload = false;
 				for (JsonElement element : result.getAsJsonArray("events")) {
 					reload |= handleEvent(element.getAsJsonObject());
@@ -363,6 +366,9 @@ public final class LauncherSocial {
 				if (reload) {
 					reloadState();
 					publish(new Event("state", null, null, null, null));
+				}
+				if (pollAfter > 0) {
+					sleep(Math.min(pollAfter, 60_000));
 				}
 			} catch (InterruptedException e) {
 				return;
@@ -402,7 +408,8 @@ public final class LauncherSocial {
 			throw new IllegalStateException("not signed in");
 		}
 		if (current.isOffline()) {
-			throw new IllegalStateException("offline account");
+			authenticateOffline(current); // fork backend: trust-on-first-use claim instead of Mojang
+			return;
 		}
 		// Launchers stay open for days (tray, PC asleep overnight): the 24 h Minecraft token runs out and the
 		// connection - and with it website/staff sign-in codes - used to stay dead until a restart.
@@ -417,6 +424,26 @@ public final class LauncherSocial {
 			}
 			// Mojang refused a token that looked valid (revoked, or the clock was off): one fresh token, one retry.
 			authenticate(refreshToken(current));
+		}
+	}
+
+	private static void authenticateOffline(MinecraftSession current) throws Exception {
+		JsonObject claim = new JsonObject();
+		claim.addProperty("uuid", current.uuid().replace("-", "").toLowerCase());
+		claim.addProperty("username", current.username());
+		claim.addProperty("secret", OfflineIdentity.secret());
+		claim.addProperty("kind", "launcher");
+		JsonObject answer = postJson("/v1/session/offline-claim", claim, null);
+		token = answer.get("sessionToken").getAsString();
+		applyIntervals(answer);
+	}
+
+	/** The server's advertised heartbeat period (the fork backend asks for 60 s); 30 s until it says. */
+	private static volatile long heartbeatMillis = 30_000;
+
+	private static void applyIntervals(JsonObject answer) {
+		if (answer != null && answer.has("heartbeatIntervalSeconds") && answer.get("heartbeatIntervalSeconds").isJsonPrimitive()) {
+			heartbeatMillis = Math.max(30, Math.min(300, answer.get("heartbeatIntervalSeconds").getAsLong())) * 1000;
 		}
 	}
 
@@ -463,7 +490,9 @@ public final class LauncherSocial {
 		verify.addProperty("uuid", uuid);
 		verify.addProperty("serverId", serverId);
 		verify.addProperty("kind", "launcher");
-		token = postJson("/v1/session/verify", verify, null).get("sessionToken").getAsString();
+		JsonObject verified = postJson("/v1/session/verify", verify, null);
+		token = verified.get("sessionToken").getAsString();
+		applyIntervals(verified);
 	}
 
 	/**
