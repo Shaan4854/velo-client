@@ -283,8 +283,14 @@ public final class SocialTest {
 				}
 				for (int i = 1; i <= 5; i++) {
 					final int n = i;
-					// The previous emote must be over on this side first, or "playing" is already true and the delay reads ~0
-					await("trial-" + n + "-B-idle-before", 40, () -> uuid != null && !net.veloclient.velo.client.emotes.Emotes.playing(dashed(uuid)));
+					// Remote emotes never "stop" in a headless client, so playing() is already true from the last trial: remember the
+					// current entry and count the emote as seen only when it is replaced by a new one.
+					final Object[] before = {null};
+					net.veloclient.velo.client.emotes.Emotes.forEachPlaying((u, pl) -> {
+						if (uuid != null && u.equals(dashed(uuid))) {
+							before[0] = pl;
+						}
+					});
 					if (!await("trial-" + n + "-start", 90, () -> Files.exists(dir.resolve("delay-t0-" + n)))) {
 						break;
 					}
@@ -292,7 +298,13 @@ public final class SocialTest {
 					boolean seen = false;
 					long deadline = System.currentTimeMillis() + 30_000;
 					while (System.currentTimeMillis() < deadline) {
-						if (uuid != null && net.veloclient.velo.client.emotes.Emotes.playing(dashed(uuid))) {
+						final Object[] now = {null};
+						net.veloclient.velo.client.emotes.Emotes.forEachPlaying((u, pl) -> {
+							if (uuid != null && u.equals(dashed(uuid))) {
+								now[0] = pl;
+							}
+						});
+						if (now[0] != null && now[0] != before[0]) {
 							seen = true;
 							break;
 						}
