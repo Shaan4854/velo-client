@@ -156,3 +156,6 @@ Sandbox notes: 1 CPU, 2 GB RAM. Mod/launcher builds need JDK 25 with `--no-daemo
 
 ## Release 1.6.1 (2026-11-28)
 Main = upstream 1.6.0 merge + Workers backend (workers-backend/) + live default URL. Version bumped in launcher/build.gradle (launcherAppVersion) and stonecutter.properties.toml (mod.version). Test/CI-only code (screenshot tour, two-client SocialTest) lives only on ci/screenshot.
+
+## Final wrap-up (2026-11-28)
+See STATUS.md for state, redeploy recipe, test run IDs and known gaps. Session TTL is now 90 s (was 240 s); heartbeat 60 s unchanged. Vault note: the "Cloudflare API token - velo deploy" username field holds "account:<id>"; strip the prefix before use as CLOUDFLARE_ACCOUNT_ID.
