@@ -283,6 +283,8 @@ public final class SocialTest {
 				}
 				for (int i = 1; i <= 5; i++) {
 					final int n = i;
+					// The previous emote must be over on this side first, or "playing" is already true and the delay reads ~0
+					await("trial-" + n + "-B-idle-before", 40, () -> uuid != null && !net.veloclient.velo.client.emotes.Emotes.playing(dashed(uuid)));
 					if (!await("trial-" + n + "-start", 90, () -> Files.exists(dir.resolve("delay-t0-" + n)))) {
 						break;
 					}
