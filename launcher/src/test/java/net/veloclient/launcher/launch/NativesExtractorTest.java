@@ -42,7 +42,7 @@ class NativesExtractorTest {
 			Files.deleteIfExists(path);
 		});
 		assertTrue(ok);
-		assertEquals(0, Files.list(dir).count());
+		assertFalse(Files.exists(dir), "the folder is emptied and removed");
 	}
 
 	@Test
