@@ -26,8 +26,8 @@ public final class WindowOcclusion {
 
 	/** Frame rate while hidden: low enough to cost next to nothing, high enough that the game keeps ticking smoothly. */
 	public static final int HIDDEN_FPS = 15;
-	/** Settings toggle (Performance Boost, "Throttle Hidden Window"); on by default. */
-	public static volatile boolean enabled = !Boolean.getBoolean("velo.noHiddenThrottle");
+	/** Settings toggle (Performance Boost, "Throttle Hidden Window"). FORK: off by default (it can misjudge windowed setups with overlays and look like low FPS); -Dvelo.hiddenThrottle=true turns it on at start. */
+	public static volatile boolean enabled = Boolean.getBoolean("velo.hiddenThrottle");
 
 	private static final String OS = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
 	private static final boolean WINDOWS = OS.contains("win");
