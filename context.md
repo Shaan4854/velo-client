@@ -137,7 +137,7 @@ flowchart TD
   - `OfflineCosmetics` gate: an offline-claim session no longer switches the local unlock off (`VeloServerClient.sessionTokenForOfflineGate()`), so the Locker stays unlocked while the player is online-visible. Microsoft sessions still switch it off.
   - Intervals: mod heartbeat follows the server's advertised period (60 s; clamped 20 to 300 s); online poll 8 s while other Velo players are online, 20 s alone; social polls (mod and launcher) follow `pollAfterMs` instead of long-polling; emotes older than 8 s on the server clock are skipped.
   - The Worker proxies anonymous public GETs it does not own (store catalog, art, news) to `UPSTREAM_BASE` with a 10 minute cache, because the client loads the store catalog from its configured server. Anything else it does not own returns 404 `{"error":"Not available on this server"}`. This keeps the same read-only requests to upstream that every fork client already made; set `UPSTREAM_BASE` empty to turn it off. Decision for the owner.
-- Test aid: `.github/workflows/client-screenshot.yml` (manual dispatch only) boots the mod under Xvfb with Mesa software GL against a local `wrangler dev`, saves screenshots, and fails if the client did not appear in `/v1/online`.
+- Test aid: `.github/workflows/client-screenshot.yml` lives only on the throwaway `ci/screenshot` branch (deleted after testing) boots the mod under Xvfb with Mesa software GL against a local `wrangler dev`, saves screenshots, and fails if the client did not appear in `/v1/online`.
 - M5 deploy with `wrangler deploy` after the owner's Cloudflare login, then a test release build. The owner approves any release.
 
 ## 7. How to run the backend locally
